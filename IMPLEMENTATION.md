@@ -199,6 +199,23 @@ Spec for the single file (~400 lines, zero dependencies, Unity 2020.3+ / .NET St
 follow the MailPoppy live-test discipline: spare resources, explicit founder confirmation
 before anything mutating, verify the account is clean afterwards.
 
+## 8b. Known gaps vs the AGENTS.md §10 listing checklist (found 2026-08-09)
+
+Both are **listing blockers**, neither is a code defect today:
+
+1. **Costs are hardcoded** — `stats.ts` prices from `PRICE_PER_MILLION_WRITES` /
+   `PRICE_PER_MILLION_REQUESTS` constants. AGENTS.md §9 "Show the money" says **never
+   hardcode prices**: query the AWS Price List API (`pricing:GetProducts`, read-only, free,
+   amber-safe as a plain read grant), cache per session, and degrade to a clearly
+   *approx*-labelled built-in number when the query fails. Fix = one grant + one backend
+   fetch + relabel. Also missing: the §9 "celebrate the $0 state" line ("nothing running —
+   you're not being billed").
+2. **`bugsUrl` points at a private repo.** The §10 checklist requires the Feedback tab's
+   bug link to be a **public** issue tracker; `github.com/leonct74/liveops-poppy` is
+   private. Either flip it public at listing time or point `bugsUrl` at whatever public
+   mirror/tracker the release uses (the MailPoppy mirror lesson: **fetch the URL with no
+   credentials and require a 200 before shipping it**).
+
 ## 9. What is deliberately NOT in this plan
 
 Raw S3 archive (A2), saves/leaderboards (v2, DESIGN §11a), CloudFront/WAF/custom domain,

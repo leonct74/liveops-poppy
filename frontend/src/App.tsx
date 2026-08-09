@@ -1,25 +1,164 @@
-// P0: a contract-correct hello screen proving the poppy loads in the host. The real
-// screens (Dashboard / Events / Remote config / Titles & SDK / Settings / Resources —
-// IMPLEMENTATION.md §6) land in P4.
+// The poppy shell.
+//
+// Before anything is deployed the app runs on the DEMO api — a fake studio with plausible
+// numbers — so a developer can see exactly what they'd get before opening an AWS account.
+// That is deliberate product surface, not a placeholder (MailPoppy's demo inbox proved it
+// is what carries people over the setup step).
 
-export function App() {
+import { useEffect, useMemo, useState } from "react";
+import { api as liveApi, type Api } from "./api";
+import { demoApi } from "./demo";
+import { Dashboard } from "./Dashboard";
+import { ConfigEditor } from "./ConfigEditor";
+import { Deployment } from "./Deployment";
+import { Sdk } from "./Sdk";
+import { Titles } from "./Titles";
+import type { DeploymentStatus } from "./types";
+import { Feedback } from "./Feedback";
+
+type Tab = "dashboard" | "config" | "titles" | "setup" | "feedback";
+
+// Feedback is LAST in every poppy (AGENTS.md §9a) — same place in all of them.
+const TABS: { id: Tab; label: string }[] = [
+  { id: "dashboard", label: "Dashboard" },
+  { id: "config", label: "Remote config" },
+  { id: "titles", label: "Titles & SDK" },
+  { id: "setup", label: "Setup" },
+  { id: "feedback", label: "Feedback" },
+];
+
+export function App({ apiImpl }: { apiImpl?: Api } = {}) {
+  const live = apiImpl ?? liveApi;
+  const [status, setStatus] = useState<DeploymentStatus | null>(null);
+  const [tab, setTab] = useState<Tab>("dashboard");
+  const [titleId, setTitleId] = useState<string>("");
+
+  // "Deployed" is read from AWS, never remembered — so this flips on its own the moment
+  // the stack goes live, without the user hunting for a refresh button.
+  const isLive = status?.phase === "ready";
+  const demo = useMemo(() => demoApi(), []);
+  const active: Api = isLive ? live : demo;
+
+  // The shell asks for status ITSELF rather than waiting for the Setup tab's panel to
+  // report in: otherwise someone with a live deployment opens the app, sees "demo data",
+  // and has to find the Setup tab before the app admits their backend exists.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const s = await live.status();
+        if (!cancelled) setStatus(s);
+      } catch {
+        // No connection yet, or the backend isn't reachable — demo mode is the honest
+        // fallback, and the Setup tab surfaces the actual error.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [live]);
+
+  useEffect(() => {
+    // Switching between demo and live changes which titles exist.
+    setTitleId("");
+  }, [isLive]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { titles } = await active.listTitles();
+        if (!cancelled && titles[0]) setTitleId((current) => current || titles[0]!.titleId);
+      } catch {
+        /* the panels surface their own errors */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [active]);
+
   return (
-    <div className="lop-shell">
-      <header className="lop-header">
+    <div className="app">
+      <header className="app-header">
+        <img src="./liveopspoppy-icon.png" alt="" />
         <h1>LiveOpsPoppy</h1>
-        <p className="lop-tagline">
-          Your game&apos;s LiveOps backend in your own AWS — remote config without review
-          cycles, and player analytics nobody else can read.
-        </p>
       </header>
-      <main className="lop-card">
-        <h2>Under construction</h2>
-        <p>
-          This is the P0 scaffold build. The backend stack (remote config + telemetry
-          collector) deploys from P3; the dashboard and config editor arrive in P4.
-        </p>
-        <p className="lop-dim">No AWS resources are created by this build.</p>
-      </main>
+      <p className="app-sub">
+        Your game's LiveOps backend, in your own AWS. Change balance, prices and features
+        live — no store review — and see players, sessions and retention. No per-player fees.
+      </p>
+
+      {!isLive && (
+        <div className="banner info" style={{ marginBottom: 14 }}>
+          <strong>You're looking at demo data.</strong> This is a made-up game so you can see
+          what LiveOpsPoppy does. Set it up in your own AWS account (Setup tab) and it switches
+          to your real titles — nothing here is sent anywhere.
+        </div>
+      )}
+
+      <nav className="tabs" style={{ marginBottom: 14 }} aria-label="Sections">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            className={`tab ${tab === t.id ? "active" : ""}`}
+            aria-current={tab === t.id ? "page" : undefined}
+            onClick={() => setTab(t.id)}
+          >
+            {t.label}
+          </button>
+        ))}
+      </nav>
+
+      {tab === "dashboard" &&
+        (titleId ? (
+          <Dashboard api={active} titleId={titleId} />
+        ) : (
+          <div className="card">
+            <p className="muted" style={{ marginBottom: 0 }}>
+              Create a title in <strong>Titles &amp; SDK</strong> to start seeing numbers here.
+            </p>
+          </div>
+        ))}
+
+      {tab === "config" &&
+        (titleId ? (
+          <ConfigEditor api={active} titleId={titleId} readOnly={!isLive} />
+        ) : (
+          <div className="card">
+            <p className="muted" style={{ marginBottom: 0 }}>
+              Create a title first — remote config belongs to a specific game.
+            </p>
+          </div>
+        ))}
+
+      {tab === "titles" && (
+        <>
+          <Titles api={active} readOnly={!isLive} selectedId={titleId} onSelect={setTitleId} />
+          {titleId && <Sdk endpoint={status?.collectorUrl} titleId={titleId} />}
+        </>
+      )}
+
+      {tab === "setup" && (
+        <>
+          <Deployment api={live} onChange={setStatus} />
+          <div className="card">
+            <div className="section-title">What this creates in your account</div>
+            <ul className="muted" style={{ margin: 0, paddingLeft: 18, fontSize: 13 }}>
+              <li>One DynamoDB table holding your config and your counters</li>
+              <li>One Lambda behind an HTTPS address your game talks to</li>
+              <li>That Lambda's own least-privilege role, and its log group</li>
+              <li>A small S3 bucket holding the Lambda's code</li>
+            </ul>
+            <p className="muted" style={{ fontSize: 13, marginBottom: 0, marginTop: 10 }}>
+              Nothing else, and nothing outside names starting with <span className="chip">LiveOpsPoppy</span>.
+              "Remove everything" deletes all of it.
+            </p>
+          </div>
+        </>
+      )}
+
+      {tab === "feedback" && <Feedback />}
     </div>
   );
 }

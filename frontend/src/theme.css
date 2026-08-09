@@ -1,15 +1,22 @@
-/* LiveOpsPoppy's own styles on top of the design-kit tokens (poppy.css). The assigned
-   accent is poppyAccent("com.liveopspoppy.desktop") = #e8b8c9 — use it, don't invent. */
+/* LiveOpsPoppy's own styles on top of the design-kit token sheet (poppy.css — tokens are
+   --poppy-*). The assigned accent is poppyAccent("com.liveopspoppy.desktop") = #e8b8c9:
+   override the kit's placeholder accent, don't invent colours. */
 
 :root {
-  --lop-accent: #e8b8c9;
+  --poppy-accent: #e8b8c9;
+}
+
+body {
+  margin: 0;
+  background: var(--poppy-surface-0);
+  color: var(--poppy-text);
+  font-family: var(--poppy-font);
 }
 
 .lop-shell {
   max-width: 720px;
   margin: 0 auto;
   padding: 24px 20px 48px;
-  font-family: var(--pop-font, ui-sans-serif, system-ui, sans-serif);
 }
 
 .lop-header h1 {
@@ -19,14 +26,15 @@
 
 .lop-tagline {
   margin: 0 0 20px;
-  opacity: 0.75;
+  color: var(--poppy-muted-2);
   font-size: 14px;
 }
 
 .lop-card {
-  border: 1px solid var(--pop-border, #d8d2cb);
-  border-left: 3px solid var(--lop-accent);
-  border-radius: 10px;
+  background: var(--poppy-surface-1);
+  border: 1px solid var(--poppy-border);
+  border-left: 3px solid var(--poppy-accent);
+  border-radius: var(--poppy-radius);
   padding: 16px 18px;
 }
 
@@ -36,6 +44,6 @@
 }
 
 .lop-dim {
-  opacity: 0.6;
+  color: var(--poppy-muted);
   font-size: 13px;
 }

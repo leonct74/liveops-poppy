@@ -55,7 +55,9 @@ AgentsPoppy — the backend bundle embeds the template and the Lambda zip, and a
 silently deploys old code. See `CLAUDE.md` for the rest of the traps.
 
 `DESIGN.md` holds the decisions and rationale; `IMPLEMENTATION.md` holds the build contract
-(key literals, endpoint shapes, phases).
+(key literals, endpoint shapes, phases); **`TESTING.md` is how to actually run and verify
+it** — including a game simulator so you can exercise the whole backend without opening
+Unity.
 
 ## Status
 

@@ -1,0 +1,35 @@
+{
+  "name": "liveops-poppy",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Your game's LiveOps backend in your own AWS — an AgentsPoppy extension.",
+  "type": "module",
+  "license": "PolyForm-Shield-1.0.0",
+  "workspaces": [
+    "infra",
+    "lambdas",
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "pretypecheck": "npm run gen:backend",
+    "test": "npm run test --workspaces --if-present",
+    "gen:backend": "node scripts/build-backend-bundle.mjs",
+    "build": "npm run build:frontend && npm run build:backend",
+    "build:frontend": "npm run build -w @liveopspoppy/frontend",
+    "prebuild:backend": "npm run gen:backend",
+    "build:backend": "node scripts/build-backend.mjs",
+    "make-icon": "node scripts/make-icon.mjs",
+    "validate-manifest": "node scripts/validate-manifest.mjs",
+    "sync-feedback": "node ${AGENTSPOPPY_REPO:-../agentspoppy}/scripts/sync-feedback-tab.mjs --dest frontend/src/vendor",
+    "check-feedback": "node ${AGENTSPOPPY_REPO:-../agentspoppy}/scripts/sync-feedback-tab.mjs --dest frontend/src/vendor --check",
+    "pack": "npm run build && node ${AGENTSPOPPY_REPO:-../agentspoppy}/scripts/pack-extension.mjs --src . --frontend frontend/dist",
+    "install-dev": "npm run build && node ${AGENTSPOPPY_REPO:-../agentspoppy}/scripts/install-dev-extension.mjs --src . --frontend frontend/dist --backend backend/index.cjs",
+    "certify": "npm --prefix ${AGENTSPOPPY_REPO:-../agentspoppy} run certify -- --extension $PWD"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0",
+    "typescript": "^5.7.0"
+  }
+}

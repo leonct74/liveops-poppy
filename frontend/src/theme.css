@@ -1,0 +1,41 @@
+/* LiveOpsPoppy's own styles on top of the design-kit tokens (poppy.css). The assigned
+   accent is poppyAccent("com.liveopspoppy.desktop") = #e8b8c9 — use it, don't invent. */
+
+:root {
+  --lop-accent: #e8b8c9;
+}
+
+.lop-shell {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 24px 20px 48px;
+  font-family: var(--pop-font, ui-sans-serif, system-ui, sans-serif);
+}
+
+.lop-header h1 {
+  margin: 0 0 4px;
+  font-size: 22px;
+}
+
+.lop-tagline {
+  margin: 0 0 20px;
+  opacity: 0.75;
+  font-size: 14px;
+}
+
+.lop-card {
+  border: 1px solid var(--pop-border, #d8d2cb);
+  border-left: 3px solid var(--lop-accent);
+  border-radius: 10px;
+  padding: 16px 18px;
+}
+
+.lop-card h2 {
+  margin: 0 0 8px;
+  font-size: 16px;
+}
+
+.lop-dim {
+  opacity: 0.6;
+  font-size: 13px;
+}

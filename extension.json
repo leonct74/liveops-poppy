@@ -1,0 +1,136 @@
+{
+  "id": "com.liveopspoppy.desktop",
+  "name": "LiveOpsPoppy",
+  "version": "0.1.0",
+  "description": "Your game's LiveOps backend in your own AWS — change balance, prices and features live without an app-store review, and see players, sessions and retention on a dashboard nobody else can read. No per-player fees, ever.",
+  "icon": "frontend/liveopspoppy-icon.png",
+  "bugsUrl": "https://github.com/leonct74/liveops-poppy/issues",
+  "permissionSet": {
+    "id": "liveopspoppy-backend",
+    "name": "LiveOpsPoppy backend",
+    "description": "Deploys and removes its own CloudFormation stack (named LiveOpsPoppyStack): one DynamoDB table, one collector Lambda behind a public URL, and a least-privilege execution role for that Lambda. Every change and delete is limited to resources named LiveOpsPoppy* (and a liveopspoppy-deploy-* code bucket) — it cannot touch anything else in your account. It creates one narrowly-scoped IAM role for its own Lambda; no account or organisation access.",
+    "requiredTags": [
+      "agentspoppy:account",
+      "agentspoppy:app",
+      "agentspoppy:connection"
+    ],
+    "grants": [
+      {
+        "service": "cloudformation",
+        "actions": [
+          "CreateStack",
+          "UpdateStack",
+          "ContinueUpdateRollback",
+          "DeleteStack",
+          "DescribeStacks",
+          "DescribeStackEvents",
+          "DescribeStackResources"
+        ],
+        "resourceScope": "arn:aws:cloudformation:*:*:stack/LiveOpsPoppy*"
+      },
+      {
+        "service": "dynamodb",
+        "actions": [
+          "CreateTable",
+          "DeleteTable",
+          "DescribeTable",
+          "UpdateTimeToLive",
+          "DescribeTimeToLive",
+          "TagResource",
+          "ListTagsOfResource",
+          "Query",
+          "Scan",
+          "GetItem",
+          "PutItem",
+          "UpdateItem",
+          "DeleteItem"
+        ],
+        "resourceScope": "arn:aws:dynamodb:*:*:table/LiveOpsPoppy*"
+      },
+      {
+        "service": "lambda",
+        "actions": [
+          "CreateFunction",
+          "DeleteFunction",
+          "GetFunction",
+          "UpdateFunctionCode",
+          "UpdateFunctionConfiguration",
+          "CreateFunctionUrlConfig",
+          "DeleteFunctionUrlConfig",
+          "GetFunctionUrlConfig",
+          "AddPermission",
+          "RemovePermission",
+          "GetPolicy",
+          "TagResource",
+          "ListTags"
+        ],
+        "resourceScope": "arn:aws:lambda:*:*:function:LiveOpsPoppy*"
+      },
+      {
+        "service": "iam",
+        "actions": [
+          "CreateRole",
+          "DeleteRole",
+          "GetRole",
+          "PassRole",
+          "PutRolePolicy",
+          "DeleteRolePolicy",
+          "GetRolePolicy",
+          "TagRole",
+          "ListRoleTags"
+        ],
+        "resourceScope": "arn:aws:iam::*:role/LiveOpsPoppy*"
+      },
+      {
+        "service": "logs",
+        "actions": [
+          "CreateLogGroup",
+          "DeleteLogGroup",
+          "PutRetentionPolicy",
+          "TagResource",
+          "ListTagsForResource"
+        ],
+        "resourceScope": "arn:aws:logs:*:*:log-group:/aws/lambda/LiveOpsPoppy*"
+      },
+      {
+        "service": "s3",
+        "actions": [
+          "CreateBucket",
+          "DeleteBucket",
+          "ListBucket",
+          "PutBucketTagging",
+          "GetBucketLocation"
+        ],
+        "resourceScope": "arn:aws:s3:::liveopspoppy-deploy-*"
+      },
+      {
+        "service": "s3",
+        "actions": [
+          "PutObject",
+          "GetObject",
+          "DeleteObject"
+        ],
+        "resourceScope": "arn:aws:s3:::liveopspoppy-deploy-*/*"
+      }
+    ],
+    "limits": null
+  },
+  "frontend": {
+    "entry": "frontend/index.html"
+  },
+  "backend": {
+    "entry": "backend/index.cjs",
+    "transport": "http",
+    "runtime": "node22"
+  },
+  "teardown": {
+    "endpoint": "/teardown"
+  },
+  "capabilities": [
+    "aws:credentials",
+    "connection:read",
+    "backend:invoke",
+    "commerce:purchase",
+    "host:openExternal"
+  ]
+}

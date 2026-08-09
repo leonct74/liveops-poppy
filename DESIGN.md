@@ -284,5 +284,13 @@ writes ⇒ **roughly $3–6/mo of AWS at 10k DAU; pennies for a small title; ~$0
   template.ts + collector Lambda (config GET ETag/304, POST /e cap gate + cardinality
   guard + retention cohorts), boot.ts broker minting, hello frontend (verified in-browser,
   design-kit tokens). **68 tests green**; typecheck + build + validate-manifest green.
-  No AWS touched. Next: P3 (deploy/teardown + admin plane; live gate needs founder
-  confirmation).
+  No AWS touched.
+- 2026-08-09 — **P3 + P4 BUILT** (`60175ce`, `b3f7757`). P3: stack deploy/teardown with an
+  **ordering-aware** update check that refuses backend downgrades (MailPoppy's 07-29
+  footgun designed out), titles (one-time key + 7-day rotation grace), versioned config
+  with pointer-flip rollback, stats + honest cost estimate, GDPR player erasure. P4: the
+  five screens + **demo mode** (a plausible fake game so a developer sees the product
+  before opening an AWS account) + the generated one-file Unity SDK. **141 tests green**;
+  typecheck + build + validate-manifest green. Pushed to
+  **github.com/leonct74/liveops-poppy** (PRIVATE — verified anonymously). Still **no AWS
+  touched**: the live deploy gate needs explicit founder confirmation.

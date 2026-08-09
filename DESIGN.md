@@ -277,4 +277,12 @@ writes ⇒ **roughly $3–6/mo of AWS at 10k DAU; pennies for a small title; ~$0
 - 2026-08-09 — **name locked: LiveOpsPoppy** (founder). Detailed build plan written:
   **`IMPLEMENTATION.md`** (repo layout, manifest grants, table/key contract, endpoint
   contracts, SDK spec, phases P0–P6 with done-gates). Working assumptions A1–A5 recorded
-  there for founder veto; remaining §12 questions folded into them. No code yet.
+  there for founder veto; remaining §12 questions folded into them.
+- 2026-08-09 — **P0–P2 BUILT** (commits `5637eab` + `403fb86`): workspaces scaffold, build
+  pipeline (gen:backend embed, node22 backend, deterministic zip), extension.json rated
+  **medium/amber by the REAL assessor with zero findings** (all grants LiveOpsPoppy*-scoped),
+  template.ts + collector Lambda (config GET ETag/304, POST /e cap gate + cardinality
+  guard + retention cohorts), boot.ts broker minting, hello frontend (verified in-browser,
+  design-kit tokens). **68 tests green**; typecheck + build + validate-manifest green.
+  No AWS touched. Next: P3 (deploy/teardown + admin plane; live gate needs founder
+  confirmation).

@@ -1,6 +1,9 @@
-import { describe, expect, it } from "vitest";
-import { averageRetention, formatDuration } from "./Dashboard";
-import type { RetentionPoint } from "./types";
+import { describe, expect, it, vi } from "vitest";
+import { render, screen, waitFor } from "@testing-library/react";
+import { averageRetention, Dashboard, formatDuration } from "./Dashboard";
+import { demoApi } from "./demo";
+import type { Api } from "./api";
+import type { Overview, PriceBook, RetentionPoint } from "./types";
 
 const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
 
@@ -37,5 +40,58 @@ describe("formatDuration", () => {
     expect(formatDuration(0)).toBe("—");
     expect(formatDuration(45)).toBe("45s");
     expect(formatDuration(605)).toBe("10m 5s");
+  });
+});
+
+// ── The cost card ─────────────────────────────────────────────────────────────────────
+const AWS_PRICES: PriceBook = {
+  writesPerMillionUsd: 1.25,
+  requestsPerMillionUsd: 0.2,
+  source: "aws",
+  region: "eu-west-1",
+};
+
+const overview = (events: number, prices: PriceBook, estimatedUsd = 4.2): Overview => ({
+  days: [],
+  totals: { dau: 0, sessions: 0, events, avgSessionSeconds: 0 },
+  platforms: [],
+  versions: [],
+  events: [],
+  eventOverflow: false,
+  cost: { events, estimatedUsd, basis: "It is an estimate, not your bill.", prices },
+});
+
+const apiWithCost = (data: Overview): Api => ({
+  ...demoApi(),
+  stats: vi.fn(async () => data),
+  retention: vi.fn(async () => ({ cohorts: [] })),
+});
+
+describe("the cost card", () => {
+  it("celebrates $0 rather than printing ~$0.00 when nothing has arrived", async () => {
+    render(<Dashboard api={apiWithCost(overview(0, AWS_PRICES, 0))} titleId="abcd1234" />);
+    await waitFor(() => expect(screen.getByText("$0")).toBeTruthy());
+    expect(screen.getByText(/nothing is being billed/i)).toBeTruthy();
+    // "~$0.00" reads like a rounding artefact; costing nothing at idle is the whole point.
+    expect(screen.queryByText(/~\$0\.00/)).toBeNull();
+  });
+
+  it("shows the estimate once traffic exists, with no fallback warning on live prices", async () => {
+    render(<Dashboard api={apiWithCost(overview(120_000, AWS_PRICES))} titleId="abcd1234" />);
+    await waitFor(() => expect(screen.getByText("~$4.20")).toBeTruthy());
+    expect(screen.queryByText(/price list/i)).toBeNull();
+  });
+
+  it("says so when the numbers are our fallback, not AWS's", async () => {
+    const stale: PriceBook = { ...AWS_PRICES, source: "builtin" };
+    render(<Dashboard api={apiWithCost(overview(120_000, stale))} titleId="abcd1234" />);
+    await waitFor(() => expect(screen.getByText(/price list/i)).toBeTruthy());
+  });
+
+  it("does not report a failed lookup in demo mode, where nothing was ever looked up", async () => {
+    const demo: PriceBook = { ...AWS_PRICES, source: "demo" };
+    render(<Dashboard api={apiWithCost(overview(120_000, demo))} titleId="abcd1234" />);
+    await waitFor(() => expect(screen.getByText("~$4.20")).toBeTruthy());
+    expect(screen.queryByText(/price list/i)).toBeNull();
   });
 });

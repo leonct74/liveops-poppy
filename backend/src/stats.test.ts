@@ -1,7 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { QueryCommand } from "@aws-sdk/client-dynamodb";
 import { ASSUMED_BATCH_SIZE, ASSUMED_WRITES_PER_EVENT, estimateCost, StatsReader } from "./stats";
+import { builtinPrices, type PriceBook } from "./pricing";
 import type { DynamoLike } from "./titles";
+
+const PRICES: PriceBook = {
+  writesPerMillionUsd: 1.25,
+  requestsPerMillionUsd: 0.2,
+  source: "aws",
+  region: "eu-west-1",
+};
 
 const TABLE = "LiveOpsPoppyData";
 const NOW = Date.parse("2026-08-09T12:00:00Z");
@@ -23,7 +31,7 @@ function fake(byPk: Record<string, any[]>) {
 
 describe("estimateCost", () => {
   it("is honest about being an estimate, never a bill or a cap", () => {
-    const est = estimateCost(1_000_000);
+    const est = estimateCost(1_000_000, PRICES);
     expect(est.basis).toMatch(/estimate, not your bill/i);
     expect(est.basis).not.toMatch(/cap|limit/i);
   });
@@ -31,13 +39,31 @@ describe("estimateCost", () => {
   it("prices from the documented assumptions", () => {
     const events = 1_000_000;
     const expected =
-      (events * ASSUMED_WRITES_PER_EVENT) / 1_000_000 * 1.25 +
-      Math.ceil(events / ASSUMED_BATCH_SIZE) / 1_000_000 * 0.2;
-    expect(estimateCost(events).estimatedUsd).toBe(Math.round(expected * 100) / 100);
+      (events * ASSUMED_WRITES_PER_EVENT) / 1_000_000 * PRICES.writesPerMillionUsd +
+      Math.ceil(events / ASSUMED_BATCH_SIZE) / 1_000_000 * PRICES.requestsPerMillionUsd;
+    expect(estimateCost(events, PRICES).estimatedUsd).toBe(Math.round(expected * 100) / 100);
+  });
+
+  it("uses whatever AWS charges, not a number baked into the app", () => {
+    const dearer = { ...PRICES, writesPerMillionUsd: 2.5, requestsPerMillionUsd: 0.4 };
+    expect(estimateCost(1_000_000, dearer).estimatedUsd).toBe(
+      estimateCost(1_000_000, PRICES).estimatedUsd * 2,
+    );
+  });
+
+  it("names the region when the prices are AWS's, and admits it when they are not", () => {
+    expect(estimateCost(1, PRICES).basis).toContain("eu-west-1");
+    const fallback = estimateCost(1, builtinPrices("eu-west-1")).basis;
+    expect(fallback).toMatch(/approximate|out of date/i);
+    expect(fallback).toMatch(/estimate, not your bill/i);
   });
 
   it("costs nothing at zero traffic (the idle promise)", () => {
-    expect(estimateCost(0).estimatedUsd).toBe(0);
+    expect(estimateCost(0, PRICES).estimatedUsd).toBe(0);
+  });
+
+  it("carries the price provenance through, so the UI can say where the number came from", () => {
+    expect(estimateCost(10, PRICES).prices).toEqual(PRICES);
   });
 });
 

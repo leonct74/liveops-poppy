@@ -66,15 +66,41 @@ console.log(`✅ ${manifestPath} — structure OK`);
 // The rating the user will see (AGENTS.md §3 acceptance: amber/green AND no findings
 // that reach beyond our own resources). Assert it here so a careless grant fails the
 // build instead of surfacing as a scary badge in the host.
+/**
+ * The one permitted exception to "every grant names the resources we own".
+ *
+ * A handful of AWS APIs have no customer resources to scope to: they read AWS's own public
+ * catalogue, which is identical in every account and contains nothing of the customer's.
+ * `pricing` is the case we need — the dashboard's cost figures must come from AWS's real
+ * prices for the customer's region rather than numbers baked into this app, and
+ * `pricing:GetProducts` accepts no resource ARN.
+ *
+ * The exception is keyed on the EXACT action set, not the service, so it cannot quietly
+ * widen: add an action and this check fails until someone justifies it here.
+ */
+const PUBLIC_CATALOGUE_READS = {
+  pricing: new Set(["GetProducts", "DescribeServices", "GetAttributeValues", "ListPriceLists", "GetPriceListFileUrl"]),
+};
+
+const isPublicCatalogueRead = (grant) => {
+  const allowed = PUBLIC_CATALOGUE_READS[grant.service];
+  return Boolean(allowed) && grant.actions.every((a) => allowed.has(a));
+};
+
 const risk = assessPermissionSet(manifest.permissionSet);
+const unjustified = [];
 for (const { grant, risk: gr } of risk.grants) {
-  console.log(`   ${gr.scoped ? "·" : "!"} ${grant.service}: ${gr.level.padEnd(6)} ${gr.reason}`);
+  const excused = !gr.scoped && isPublicCatalogueRead(grant);
+  const mark = gr.scoped ? "·" : excused ? "◦" : "!";
+  console.log(`   ${mark} ${grant.service}: ${gr.level.padEnd(6)} ${gr.reason}`);
+  if (excused) console.log(`     ↳ allowed: AWS's own public catalogue, read-only, none of the customer's data.`);
+  if (!gr.scoped && !excused) unjustified.push(grant.service);
 }
 for (const w of risk.warnings) console.log(`   ! ${w}`);
 
-if (risk.level === "high" || risk.hasUnscopedGrants || risk.warnings.length) {
+if (risk.level === "high" || unjustified.length || risk.warnings.length) {
   console.error(
-    `\n✗ rating: ${risk.level}${risk.hasUnscopedGrants ? " with grants reaching beyond our own resources" : ""}.\n` +
+    `\n✗ rating: ${risk.level}${unjustified.length ? ` with unscoped grants: ${unjustified.join(", ")}` : ""}.\n` +
       `  Every mutate-existing grant must be tagged-as-self or a concrete name/ARN we own.`,
   );
   process.exit(1);

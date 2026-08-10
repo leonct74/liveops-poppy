@@ -9,3 +9,5 @@ backend/index.cjs
 backend/src/generated/
 # Written by `npm run certify` against a real account.
 leaves-no-trace.cert.json
+# Local editor/tooling config (dev-server launch entries and the like).
+.claude/

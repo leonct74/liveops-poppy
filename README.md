@@ -57,12 +57,22 @@ silently deploys old code. See `CLAUDE.md` for the rest of the traps.
 `DESIGN.md` holds the decisions and rationale; `IMPLEMENTATION.md` holds the build contract
 (key literals, endpoint shapes, phases); **`TESTING.md` is how to actually run and verify
 it** — including a game simulator so you can exercise the whole backend without opening
-Unity.
+Unity. `docs/REST.md` is the wire contract every non-Unity engine integrates from, and
+`docs/UNITY.md` is the rig that proves the generated C# actually works in a game.
 
 ## Status
 
-Phases P0–P4 are built and tested (141 tests). Not yet deployed to a live AWS account, and
-not yet listed in the AgentsPoppy catalogue.
+Phases P0–P4 are built and tested (167 tests), and P5's docs and generator are done. Not yet
+deployed to a live AWS account, and not yet listed in the AgentsPoppy catalogue.
+
+Two things are deliberately **not** claimed yet:
+
+- **The Unity SDK has never been compiled.** It is generated and lexically checked, not
+  built by a C# compiler or run in a game. REST is the supported surface until `docs/UNITY.md`
+  has been run on a machine with Unity.
+- **The live price lookup has never answered.** The dashboard asks AWS's Price List API for
+  the region's real prices and falls back to labelled built-in figures; the fallback path is
+  tested, the live path is not.
 
 ## Licence
 

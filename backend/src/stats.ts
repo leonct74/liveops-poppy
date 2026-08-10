@@ -16,6 +16,7 @@ import {
   SK_SESS_SECONDS,
   SK_TOTAL,
 } from "../../shared/src/keys";
+import { builtinPrices, type PriceBook } from "./pricing";
 import type { DynamoLike } from "./titles";
 
 export interface DayStats {
@@ -53,10 +54,8 @@ export interface Overview {
 const num = (a: AttributeValue | undefined): number => (a?.N !== undefined ? Number(a.N) : 0);
 
 // ── Cost estimate ─────────────────────────────────────────────────────────────────────
-// Public AWS on-demand list prices (us-east-1, Aug 2026). They move: re-check before any
-// public claim, exactly like the pitch-doc competitor prices.
-export const PRICE_PER_MILLION_WRITES = 1.25; // DynamoDB on-demand WRU (≤1 KB)
-export const PRICE_PER_MILLION_REQUESTS = 0.2; // Lambda invocations
+// The unit prices come from AWS itself (pricing.ts). What stays here is the *model*: how
+// many writes and requests a given number of events implies.
 /** Assumed events per HTTP request — the SDK batches up to MAX_BATCH; real traffic sits
  * lower because flushes fire on a timer too. Deliberately conservative (more requests). */
 export const ASSUMED_BATCH_SIZE = 10;
@@ -68,20 +67,27 @@ export interface CostEstimate {
   estimatedUsd: number;
   /** Plain-English caveat shown next to the number — never presented as a bill or a cap. */
   basis: string;
+  /** Provenance, so the UI can say whether these are live prices or our fallback. */
+  prices: PriceBook;
 }
 
-/** Pure: what the counters we already hold imply about this month's AWS spend. */
-export function estimateCost(eventsThisMonth: number): CostEstimate {
+/** Pure: what the counters we already hold imply about spend, at the given prices. */
+export function estimateCost(eventsThisMonth: number, prices: PriceBook): CostEstimate {
   const writes = eventsThisMonth * ASSUMED_WRITES_PER_EVENT;
   const requests = Math.ceil(eventsThisMonth / ASSUMED_BATCH_SIZE);
   const usd =
-    (writes / 1_000_000) * PRICE_PER_MILLION_WRITES + (requests / 1_000_000) * PRICE_PER_MILLION_REQUESTS;
+    (writes / 1_000_000) * prices.writesPerMillionUsd +
+    (requests / 1_000_000) * prices.requestsPerMillionUsd;
   return {
     events: eventsThisMonth,
     estimatedUsd: Math.round(usd * 100) / 100,
     basis:
-      "Estimated from the events this deployment actually recorded, at AWS on-demand list prices. " +
+      `Estimated from the events this deployment actually recorded, at ` +
+      (prices.source === "aws"
+        ? `AWS's current on-demand prices for ${prices.region}. `
+        : `built-in approximate prices — AWS's price list was unreachable, so these may be out of date. `) +
       "It is an estimate, not your bill — AWS is the only authority on what you owe.",
+    prices,
   };
 }
 
@@ -90,6 +96,8 @@ export class StatsReader {
     private readonly db: DynamoLike,
     private readonly tableName: string,
     private readonly nowMs: () => number = Date.now,
+    /** Injected so the dashboard's prices are AWS's, and tests need no network. */
+    private readonly loadPrices: () => Promise<PriceBook> = async () => builtinPrices("unknown"),
   ) {}
 
   private async partition(pk: string): Promise<Record<string, AttributeValue>[]> {
@@ -105,7 +113,10 @@ export class StatsReader {
 
   async overview(titleId: string, days = 30): Promise<Overview> {
     const dayList = lastDays(days, this.nowMs());
-    const partitions = await Promise.all(dayList.map((d) => this.partition(dayPk(titleId, d))));
+    const [partitions, prices] = await Promise.all([
+      Promise.all(dayList.map((d) => this.partition(dayPk(titleId, d)))),
+      this.loadPrices(),
+    ]);
 
     const platforms = new Map<string, number>();
     const versions = new Map<string, number>();
@@ -155,7 +166,7 @@ export class StatsReader {
       versions: rank(versions),
       events: rank(events),
       eventOverflow,
-      cost: estimateCost(sum((d) => d.events)),
+      cost: estimateCost(sum((d) => d.events), prices),
     };
   }
 

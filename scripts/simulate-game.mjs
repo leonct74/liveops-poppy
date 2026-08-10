@@ -16,6 +16,17 @@
  * Every player id is random per run, so re-running adds NEW players rather than
  * re-counting the same ones. Pass --stable to reuse a fixed set instead (that's how you
  * check that daily-unique counting doesn't double-count a returning player).
+ *
+ * ── Flood mode ────────────────────────────────────────────────────────────────────────
+ * The bill-protection proof. Drives a title past its daily event cap and checks that the
+ * backend refuses the rest of the day:
+ *
+ *   node scripts/simulate-game.mjs --endpoint <url> --title <id> --key <k> --flood --yes
+ *
+ * Do this on a THROWAWAY title with its cap turned down (Titles → cap → e.g. 2000) — the
+ * point is to trip the cap cheaply, not to spend real money proving arithmetic. Once
+ * tripped, the title accepts no more events until 00:00 UTC: the cap meter counts what
+ * ARRIVED and is deliberately not decremented on refusal.
  */
 
 const args = new Map();
@@ -38,13 +49,21 @@ const key = args.get("key") ?? "";
 const env = args.get("env") ?? "prod";
 const players = Number(args.get("players") ?? 25);
 const stable = args.get("stable") === "true";
+const flood = args.get("flood") === "true";
+const confirmed = args.get("yes") === "true";
+const concurrency = Number(args.get("concurrency") ?? 8);
+const maxEvents = Number(args.get("max-events") ?? 50_000);
 
 if (!endpoint || !titleId || !key) {
   console.error(
-    "Usage: node scripts/simulate-game.mjs --endpoint <url> --title <titleId> --key <titleKey> [--players 25] [--env prod] [--stable]",
+    "Usage: node scripts/simulate-game.mjs --endpoint <url> --title <titleId> --key <titleKey>\n" +
+      "         [--players 25] [--env prod] [--stable]\n" +
+      "         [--flood --yes [--max-events 50000] [--concurrency 8]]",
   );
   process.exit(1);
 }
+
+const MAX_BATCH = 25; // must match shared/src/keys.ts
 
 /** The event mix a real session produces — weighted so the dashboard looks plausible. */
 const EVENT_MIX = [
@@ -89,7 +108,107 @@ async function sendBatch(installId, sessionId, platform, version, events) {
     }),
   });
   const text = await res.text();
-  return { status: res.status, text };
+  return { status: res.status, text, retryAfterHeader: res.headers.get("retry-after") };
+}
+
+// ── Flood mode ─────────────────────────────────────────────────────────────────────────
+// The cap is the one promise that has to hold against a hostile caller, because the title
+// key ships inside the game binary and must be assumed public. So this doesn't simulate a
+// polite client: it hammers one title until the backend says no, then checks that the "no"
+// is well-formed, that it sticks, and that the config plane is unharmed by it.
+
+const floodBatch = (n) => ({
+  // One event name throughout — the cardinality guard is a separate concern, and letting it
+  // fire here would muddy which limit actually stopped the flood.
+  iid: `flood-${crypto.randomUUID()}`,
+  sid: crypto.randomUUID().slice(0, 16),
+  events: Array.from({ length: n }, () => ({ n: "flood_test" })),
+});
+
+async function sendFloodBatch() {
+  const b = floodBatch(MAX_BATCH);
+  return sendBatch(b.iid, b.sid, "linux", "flood", b.events);
+}
+
+async function floodMain() {
+  if (!confirmed) {
+    console.error(
+      "Flood mode drives this title past its DAILY event cap. Once tripped it accepts no\n" +
+        "more events until 00:00 UTC, and the events it does accept are real writes you pay\n" +
+        "for. Use a throwaway title with its cap turned down, then re-run with --yes.",
+    );
+    process.exit(1);
+  }
+
+  console.log(`→ ${endpoint}  title=${titleId}  (flood: up to ${maxEvents} events)\n`);
+
+  const checks = [];
+  const check = (ok, label, detail = "") => {
+    checks.push({ ok, label });
+    console.log(`${ok ? "  PASS" : "  FAIL"}  ${label}${detail ? ` — ${detail}` : ""}`);
+  };
+
+  let sent = 0;
+  let accepted = 0;
+  let firstRefusal = null;
+
+  while (sent < maxEvents && !firstRefusal) {
+    const inFlight = Math.min(concurrency, Math.ceil((maxEvents - sent) / MAX_BATCH));
+    const results = await Promise.all(Array.from({ length: inFlight }, () => sendFloodBatch()));
+    sent += inFlight * MAX_BATCH;
+    for (const r of results) {
+      if (r.status === 202) accepted += MAX_BATCH;
+      else if (r.status === 429 && !firstRefusal) firstRefusal = r;
+      else if (r.status !== 429) console.error(`  ! unexpected ${r.status}: ${r.text}`);
+    }
+    process.stdout.write(`\r  sent ${sent}  accepted ${accepted}   `);
+  }
+  process.stdout.write("\n\n");
+
+  if (!firstRefusal) {
+    console.log(
+      `The cap did not trip after ${sent} events. That is not a failure — this title's cap is\n` +
+        "simply higher than this run. Turn the cap down on a throwaway title (Titles → cap,\n" +
+        "e.g. 2000) and run again; proving the limit cheaply is the whole point.",
+    );
+    process.exit(2);
+  }
+
+  console.log(`Refused after ~${accepted} accepted events. Checking the refusal:\n`);
+
+  let body = {};
+  try {
+    body = JSON.parse(firstRefusal.text);
+  } catch {
+    /* checked below */
+  }
+
+  const headerSeconds = Number(firstRefusal.retryAfterHeader);
+  check(Number.isFinite(headerSeconds) && headerSeconds > 0, "Retry-After header is a positive number of seconds", firstRefusal.retryAfterHeader ?? "absent");
+  check(headerSeconds > 0 && headerSeconds <= 86_400, "Retry-After is within one day (it counts down to 00:00 UTC)", `${headerSeconds}s`);
+  check(body.retryAfter === headerSeconds, "the body repeats retryAfter, for clients that cannot read headers");
+  check(typeof body.error === "string" && body.error.length > 0, "the error is in plain English", body.error ?? "missing");
+  check(!/dynamo|lambda|arn:|stack|table/i.test(firstRefusal.text), "no internals leak to a public caller");
+
+  // The meter must not decay: a flood that keeps pushing must keep getting refused.
+  const after = await Promise.all([sendFloodBatch(), sendFloodBatch(), sendFloodBatch()]);
+  check(after.every((r) => r.status === 429), "the refusal sticks — later batches are refused too", after.map((r) => r.status).join(","));
+
+  // The property that makes the cap safe to ship: telemetry stops, the GAME does not.
+  try {
+    const cfg = await fetchConfig();
+    check(cfg.status === 200, "config still serves while capped — a capped title still boots", `${cfg.status}`);
+  } catch (e) {
+    check(false, "config still serves while capped", e.message);
+  }
+
+  const failed = checks.filter((c) => !c.ok).length;
+  console.log(
+    failed === 0
+      ? "\nAll checks passed. The daily cap bounds this title's spend, and refuses in a way a\nclient can act on. Note it stays capped until 00:00 UTC.\n"
+      : `\n${failed} check(s) failed — the cap is not behaving as documented in docs/REST.md.\n`,
+  );
+  process.exit(failed === 0 ? 0 : 1);
 }
 
 async function main() {
@@ -147,7 +266,7 @@ async function main() {
   }
 }
 
-main().catch((e) => {
+(flood ? floodMain() : main()).catch((e) => {
   console.error(e.message);
   process.exit(1);
 });

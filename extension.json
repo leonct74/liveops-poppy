@@ -8,7 +8,7 @@
   "permissionSet": {
     "id": "liveopspoppy-backend",
     "name": "LiveOpsPoppy backend",
-    "description": "Deploys and removes its own CloudFormation stack (named LiveOpsPoppyStack): one DynamoDB table, one collector Lambda behind a public URL, and a least-privilege execution role for that Lambda. Every change and delete is limited to resources named LiveOpsPoppy* (and a liveopspoppy-deploy-* code bucket) — it cannot touch anything else in your account. It creates one narrowly-scoped IAM role for its own Lambda; no account or organisation access.",
+    "description": "Deploys and removes its own CloudFormation stack (named LiveOpsPoppyStack): one DynamoDB table, one collector Lambda behind a public URL, and a least-privilege execution role for that Lambda. Every change and delete is limited to resources named LiveOpsPoppy* (and a liveopspoppy-deploy-* code bucket) — it cannot touch anything else in your account. It creates one narrowly-scoped IAM role for its own Lambda; no account or organisation access. It also reads AWS's public price list (free, read-only, no data of yours involved) so the cost figures on the dashboard are AWS's real prices for your region rather than numbers baked into the app.",
     "requiredTags": [
       "agentspoppy:account",
       "agentspoppy:app",
@@ -111,6 +111,13 @@
           "DeleteObject"
         ],
         "resourceScope": "arn:aws:s3:::liveopspoppy-deploy-*/*"
+      },
+      {
+        "service": "pricing",
+        "actions": [
+          "GetProducts"
+        ],
+        "resourceScope": "*"
       }
     ],
     "limits": null

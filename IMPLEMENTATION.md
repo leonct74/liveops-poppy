@@ -192,6 +192,7 @@ Spec for the single file (~400 lines, zero dependencies, Unity 2020.3+ / .NET St
 | **P3 sidecar** | boot/server/stack/deploy-bucket/titles/config/stats/players/teardown | deploy→publish→rollback→teardown loop green against a REAL account (founder confirms first, spare account, torn down + clean-swept per working agreements); `certify` clean |
 | **P4 frontend** | all §6 screens + demo mode + commerce | dev-walk of every screen; unit tests with injected mock API (house pattern) |
 | **P5 SDK + docs** | Sdk.tsx generator + `LiveOpsPoppy.cs` template + REST docs | Unity test rig: offline boot, config change visible ≤5 min, events land in dashboard, 429 backoff observed under a synthetic flood |
+| ↳ P5 status (2026-08-10) | **Docs + generator done; the Unity rig is NOT.** `docs/REST.md` is the full wire contract (a non-Unity engine integrates from it alone); `docs/UNITY.md` is the rig, written but **never run** — no machine here has Unity or a C# toolchain, so the generated `LiveOps.cs` **has never been compiled**. Instead `sdkSource.test.ts` lexes it as a compiler's first pass would (comments, literals, escapes, bracket balance) and the generator no longer yields inside a `lock`. `simulate-game.mjs --flood --yes` covers the 429 half of the rig without Unity and self-checks the refusal (header, body, stickiness, config unaffected). | until the rig runs on a Unity machine, the supported surface is **REST**; the Unity file is a beta convenience |
 | **P6 listing** | screenshots, data-flow declaration ("no data leaves your cloud" label), catalogue submission, pack + release zip, first-party product ($79/yr sub) in AgentsPoppy admin | anonymous-curl 200 on the package URL (the 07-30 mirror lesson); purchase → entitlement resolves |
 
 **Live-verification gate (P3/P5):** synthetic flood proving the event cap bounds the bill
@@ -201,15 +202,22 @@ before anything mutating, verify the account is clean afterwards.
 
 ## 8b. Known gaps vs the AGENTS.md §10 listing checklist (found 2026-08-09)
 
-Both are **listing blockers**, neither is a code defect today:
-
-1. **Costs are hardcoded** — `stats.ts` prices from `PRICE_PER_MILLION_WRITES` /
-   `PRICE_PER_MILLION_REQUESTS` constants. AGENTS.md §9 "Show the money" says **never
-   hardcode prices**: query the AWS Price List API (`pricing:GetProducts`, read-only, free,
-   amber-safe as a plain read grant), cache per session, and degrade to a clearly
-   *approx*-labelled built-in number when the query fails. Fix = one grant + one backend
-   fetch + relabel. Also missing: the §9 "celebrate the $0 state" line ("nothing running —
-   you're not being billed").
+1. ✅ **Costs are hardcoded** — **FIXED 2026-08-10.** `backend/src/pricing.ts` queries the
+   Price List API (`pricing:GetProducts`) for the deployed region's DynamoDB write-request
+   and Lambda-request prices, once per backend launch, and `estimateCost(events, prices)`
+   takes them as an argument. The built-in numbers survive only as a labelled fallback
+   (`source: "builtin"` → the dashboard says the price list was unreachable). The `$0` state
+   now reads "nothing has arrived yet, so nothing is being billed" instead of `~$0.00`.
+   `validate-manifest.mjs` gained a **narrow, action-exact exception** for unscoped
+   *public-catalogue reads* (`PUBLIC_CATALOGUE_READS`) — `pricing:GetProducts` takes no
+   resource ARN, and the price list is AWS's own data, identical in every account. Rating
+   still **medium/amber**, unchanged.
+   - ⚠️ **The live call is UNVERIFIED.** Neither local AWS profile has `pricing:GetProducts`
+     (both 403), so AWS's real `group` / `productFamily` filter values were never confirmed
+     from here. Mitigations in code: selection is by price-dimension **`unit`** (the durable
+     part of the schema, not an attribute name), each service tries **two** filter candidates
+     before giving up, and any fallback **logs why**. First live deploy: check the backend log
+     for `price list …` and confirm the dashboard does *not* show the fallback notice.
 2. **`bugsUrl` points at a private repo.** The §10 checklist requires the Feedback tab's
    bug link to be a **public** issue tracker; `github.com/leonct74/liveops-poppy` is
    private. Either flip it public at listing time or point `bugsUrl` at whatever public

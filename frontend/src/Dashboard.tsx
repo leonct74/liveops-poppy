@@ -5,7 +5,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { Api } from "./api";
-import type { Overview, RetentionPoint } from "./types";
+import type { CostEstimate, Overview, RetentionPoint } from "./types";
 
 const RANGES = [7, 30, 90];
 
@@ -151,21 +151,56 @@ export function Dashboard({ api, titleId }: { api: Api; titleId: string }) {
         </div>
       </div>
 
+      <Cost cost={data.cost} days={days} />
+    </>
+  );
+}
+
+/**
+ * "What this costs" — and when the answer is nothing, say so plainly rather than printing
+ * `~$0.00`. Idle costing nothing is the point of the architecture, not a rounding artefact.
+ */
+function Cost({ cost, days }: { cost: CostEstimate; days: number }) {
+  if (cost.events === 0) {
+    return (
       <div className="card">
         <div className="section-title">What this costs</div>
         <div className="row">
           <span className="n" style={{ fontSize: 20, fontWeight: 650 }}>
-            ~${data.cost.estimatedUsd.toFixed(2)}
+            $0
           </span>
-          <span className="muted">
-            for {data.cost.events.toLocaleString()} events over {days} days
-          </span>
+          <span className="muted">nothing has arrived yet, so nothing is being billed</span>
         </div>
         <p className="muted" style={{ fontSize: 12, marginBottom: 0, marginTop: 8 }}>
-          {data.cost.basis}
+          There is no idle charge here. The table and the Lambda cost nothing while they sit
+          still — you start paying only when players start sending events, and only for what
+          they send.
         </p>
       </div>
-    </>
+    );
+  }
+
+  return (
+    <div className="card">
+      <div className="section-title">What this costs</div>
+      <div className="row">
+        <span className="n" style={{ fontSize: 20, fontWeight: 650 }}>
+          ~${cost.estimatedUsd.toFixed(2)}
+        </span>
+        <span className="muted">
+          for {cost.events.toLocaleString()} events over {days} days
+        </span>
+      </div>
+      <p className="muted" style={{ fontSize: 12, marginBottom: 0, marginTop: 8 }}>
+        {cost.basis}
+      </p>
+      {cost.prices.source === "builtin" && (
+        <p className="muted" style={{ fontSize: 12, marginBottom: 0, marginTop: 6 }}>
+          Couldn&rsquo;t reach AWS&rsquo;s price list just now, so this uses our built-in
+          figures. Reopen this tab later for live prices.
+        </p>
+      )}
+    </div>
   );
 }
 

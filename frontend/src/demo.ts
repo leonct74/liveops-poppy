@@ -100,6 +100,15 @@ export function demoApi(nowMs: () => number = Date.now): Api {
         basis:
           "Estimated from the events this deployment actually recorded, at AWS on-demand list prices. " +
           "It is an estimate, not your bill — AWS is the only authority on what you owe.",
+        // Demo data never pretends to have asked AWS anything — and must not show the
+        // "couldn't reach the price list" notice, which would report a failure that never
+        // happened.
+        prices: {
+          writesPerMillionUsd: 1.25,
+          requestsPerMillionUsd: 0.2,
+          source: "demo",
+          region: "eu-west-1",
+        },
       },
     };
   };

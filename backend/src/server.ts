@@ -8,6 +8,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { CloudFormationClient } from "@aws-sdk/client-cloudformation";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { PricingClient } from "@aws-sdk/client-pricing";
 import { S3Client } from "@aws-sdk/client-s3";
 import { brokerCredentialsProvider, readBootstrap } from "./boot";
 import { deploy, getStatus, tableName, teardown, type AwsCtx } from "./stack";
@@ -15,6 +16,7 @@ import { sourceCommit } from "./generated/backend-bundle";
 import { TitleRegistry } from "./titles";
 import { ConfigStore, parseEnv } from "./config";
 import { StatsReader } from "./stats";
+import { makePriceLoader, PRICING_API_REGION } from "./pricing";
 import { PlayerEraser } from "./players";
 import { TITLE_ID_RE } from "../../shared/src/keys";
 
@@ -30,9 +32,16 @@ const aws: AwsCtx = {
 };
 const db = new DynamoDBClient({ region, credentials });
 
+// The Price List API answers only from a few regions; the region we're PRICING is passed as
+// a filter, not as the endpoint.
+const loadPrices = makePriceLoader(
+  new PricingClient({ region: PRICING_API_REGION, credentials }),
+  region,
+);
+
 const titles = new TitleRegistry(db, tableName);
 const configs = new ConfigStore(db, tableName);
-const stats = new StatsReader(db, tableName);
+const stats = new StatsReader(db, tableName, Date.now, loadPrices);
 const eraser = new PlayerEraser(db, tableName);
 
 const attribution = { accountId: boot.account.accountId, connectionId: boot.connectionId };

@@ -64,10 +64,23 @@ export interface Breakdown {
   count: number;
 }
 
+export interface PriceBook {
+  writesPerMillionUsd: number;
+  requestsPerMillionUsd: number;
+  /**
+   * "aws" = AWS's own price list; "builtin" = our fallback, which may be out of date and is
+   * flagged as such. "demo" exists only on this side: the demo dashboard never asks AWS
+   * anything, so it must not claim a lookup failed.
+   */
+  source: "aws" | "builtin" | "demo";
+  region: string;
+}
+
 export interface CostEstimate {
   events: number;
   estimatedUsd: number;
   basis: string;
+  prices: PriceBook;
 }
 
 export interface Overview {

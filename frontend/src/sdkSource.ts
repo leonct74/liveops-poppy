@@ -206,14 +206,21 @@ public static class LiveOps
 
     internal static IEnumerator Flush()
     {
-        List<Dictionary<string, object>> batch;
+        // Take the batch inside the lock, then leave it before yielding. A coroutine
+        // suspends at every 'yield', and a Monitor held across a suspension point is a
+        // deadlock waiting to happen (and 'yield' inside 'lock' is a construct to avoid
+        // in an iterator regardless) — so nothing below this block touches the lock.
+        List<Dictionary<string, object>> batch = null;
         lock (_queue)
         {
-            if (_queue.Count == 0) yield break;
-            var take = Math.Min(MaxBatch, _queue.Count);
-            batch = _queue.GetRange(0, take);
-            _queue.RemoveRange(0, take);
+            if (_queue.Count > 0)
+            {
+                var take = Math.Min(MaxBatch, _queue.Count);
+                batch = _queue.GetRange(0, take);
+                _queue.RemoveRange(0, take);
+            }
         }
+        if (batch == null) yield break;
 
         var sb = new StringBuilder();
         sb.Append("{\\"t\\":").Append(LiveOpsJson.Quote(TitleId));

@@ -30,16 +30,29 @@ export const LAMBDA_HANDLER = "collector.handler";
 export const LAMBDA_RUNTIME = "nodejs20.x";
 
 /**
+ * The PREMIUM team plane (DESIGN §10): a read-only web dashboard the studio's own people
+ * log into — producer, designer, marketer, investor — with no AgentsPoppy install and no
+ * AWS access. Everything here is created ONLY when `TeamDashboardEnabled` is "yes", so a
+ * free deployment carries none of it and pays for none of it. Same `LiveOpsPoppy*` prefix,
+ * so the manifest's existing scopes still bound it, and it all dies with the stack.
+ */
+export const VIEWER_FUNCTION_NAME = "LiveOpsPoppyViewer";
+export const VIEWER_ROLE_NAME = "LiveOpsPoppyViewerRole";
+export const VIEWER_POOL_NAME = "LiveOpsPoppyViewers";
+export const VIEWER_HANDLER = "viewer.handler";
+
+/**
  * Monotonic template revision. Bump on EVERY template change that must reach deployed
  * stacks. Exposed as a stack Output so "update available" can be ORDERING-AWARE: an older
  * app sees deployed-revision > embedded-revision and must never offer a downgrade
  * (MailPoppy's 2026-07-29 plain-inequality footgun, designed out from day one).
  */
-export const TEMPLATE_REVISION = 1;
+export const TEMPLATE_REVISION = 2;
 
 export interface CfnTemplate {
   AWSTemplateFormatVersion: string;
   Description: string;
+  Conditions?: Record<string, unknown>;
   Parameters?: Record<string, unknown>;
   Resources: Record<string, unknown>;
   Outputs: Record<string, unknown>;
@@ -64,6 +77,17 @@ export function buildTemplate(): CfnTemplate {
     Parameters: {
       LambdaCodeBucket: { Type: "String", Description: "S3 bucket holding the collector code zip." },
       LambdaCodeKey: { Type: "String", Description: "S3 key of the collector code zip (content-addressed)." },
+      // The premium Team dashboard (DESIGN §10). "no" is the default and creates NOTHING —
+      // a free deployment must not carry a Cognito pool or a second Lambda it never uses.
+      TeamDashboardEnabled: {
+        Type: "String",
+        AllowedValues: ["yes", "no"],
+        Default: "no",
+        Description: "Create the team viewer plane (Cognito pool + read-only web dashboard).",
+      },
+    },
+    Conditions: {
+      TeamEnabled: { "Fn::Equals": [{ Ref: "TeamDashboardEnabled" }, "yes"] },
     },
     Resources: {
       DataTable: {
@@ -213,6 +237,159 @@ export function buildTemplate(): CfnTemplate {
           InvokedViaFunctionUrl: true,
         },
       },
+
+      // ── The PREMIUM team plane. Every resource below is Condition: TeamEnabled, so a
+      // free deployment creates none of it. All named LiveOpsPoppy* (the manifest's scopes
+      // already bound them) and all inside this one stack, so teardown still can't leak.
+
+      // Viewers are created BY THE ADMIN only — no self-signup, ever: this pool guards a
+      // studio's private numbers, and an open pool would let anyone register. Email-only
+      // recovery means a viewer resets their own password and the admin never learns it
+      // (MailPoppy's accountRecovery lesson).
+      ViewerPool: {
+        Type: "AWS::Cognito::UserPool",
+        Condition: "TeamEnabled",
+        Properties: {
+          UserPoolName: VIEWER_POOL_NAME,
+          AdminCreateUserConfig: { AllowAdminCreateUserOnly: true },
+          UsernameAttributes: ["email"],
+          AutoVerifiedAttributes: ["email"],
+          AccountRecoverySetting: {
+            RecoveryMechanisms: [{ Name: "verified_email", Priority: 1 }],
+          },
+          Policies: {
+            PasswordPolicy: {
+              MinimumLength: 10,
+              RequireLowercase: true,
+              RequireNumbers: true,
+              RequireUppercase: false,
+              RequireSymbols: false,
+            },
+          },
+        },
+      },
+
+      // A PUBLIC client (no secret): the dashboard is a static page in a browser, which can
+      // never hold a secret. USER_PASSWORD_AUTH lets that page authenticate against Cognito
+      // directly over TLS with ~30 lines of fetch — no SDK bundle. The password reaches AWS
+      // and nothing else; our Lambda never sees it.
+      ViewerPoolClient: {
+        Type: "AWS::Cognito::UserPoolClient",
+        Condition: "TeamEnabled",
+        Properties: {
+          ClientName: "LiveOpsPoppyViewerClient",
+          UserPoolId: { Ref: "ViewerPool" },
+          GenerateSecret: false,
+          ExplicitAuthFlows: ["ALLOW_USER_PASSWORD_AUTH", "ALLOW_REFRESH_TOKEN_AUTH"],
+          PreventUserExistenceErrors: "ENABLED",
+          AccessTokenValidity: 1,
+          IdTokenValidity: 1,
+          TokenValidityUnits: { AccessToken: "hours", IdToken: "hours" },
+        },
+      },
+
+      // Strictly READ-ONLY on the data table. A viewer must never be able to publish config,
+      // mint keys or delete anything — and the cheapest way to guarantee that is to give the
+      // Lambda serving them no such permission in the first place.
+      ViewerRole: {
+        Type: "AWS::IAM::Role",
+        Condition: "TeamEnabled",
+        Properties: {
+          RoleName: VIEWER_ROLE_NAME,
+          AssumeRolePolicyDocument: {
+            Version: "2012-10-17",
+            Statement: [
+              { Effect: "Allow", Principal: { Service: "lambda.amazonaws.com" }, Action: "sts:AssumeRole" },
+            ],
+          },
+          Policies: [
+            {
+              PolicyName: "viewer",
+              PolicyDocument: {
+                Version: "2012-10-17",
+                Statement: [
+                  {
+                    Effect: "Allow",
+                    Action: ["dynamodb:GetItem", "dynamodb:Query"],
+                    Resource: { "Fn::GetAtt": ["DataTable", "Arn"] },
+                  },
+                  {
+                    Effect: "Allow",
+                    Action: ["logs:CreateLogStream", "logs:PutLogEvents"],
+                    Resource: {
+                      "Fn::Sub": `arn:aws:logs:\${AWS::Region}:\${AWS::AccountId}:log-group:/aws/lambda/${VIEWER_FUNCTION_NAME}:*`,
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      },
+
+      ViewerLogGroup: {
+        Type: "AWS::Logs::LogGroup",
+        Condition: "TeamEnabled",
+        Properties: {
+          LogGroupName: { "Fn::Sub": `/aws/lambda/${VIEWER_FUNCTION_NAME}` },
+          RetentionInDays: 14,
+        },
+      },
+
+      Viewer: {
+        Type: "AWS::Lambda::Function",
+        Condition: "TeamEnabled",
+        DependsOn: ["ViewerLogGroup"],
+        Properties: {
+          FunctionName: VIEWER_FUNCTION_NAME,
+          Runtime: LAMBDA_RUNTIME,
+          Handler: VIEWER_HANDLER,
+          Role: { "Fn::GetAtt": ["ViewerRole", "Arn"] },
+          // Same zip as the collector — one bundle, two handlers (viewer.handler).
+          Code: { S3Bucket: { Ref: "LambdaCodeBucket" }, S3Key: { Ref: "LambdaCodeKey" } },
+          Timeout: 10,
+          MemorySize: 256,
+          Environment: {
+            Variables: {
+              TABLE_NAME: { Ref: "DataTable" },
+              USER_POOL_ID: { Ref: "ViewerPool" },
+              USER_POOL_CLIENT_ID: { Ref: "ViewerPoolClient" },
+            },
+          },
+        },
+      },
+
+      // AuthType NONE because the browser holds no AWS identity — the Cognito JWT is the
+      // credential, verified inside the handler. No CORS block: the page is served from
+      // this same origin, so its fetches are same-origin by construction.
+      ViewerUrl: {
+        Type: "AWS::Lambda::Url",
+        Condition: "TeamEnabled",
+        Properties: {
+          TargetFunctionArn: { "Fn::GetAtt": ["Viewer", "Arn"] },
+          AuthType: "NONE",
+        },
+      },
+      ViewerUrlPermission: {
+        Type: "AWS::Lambda::Permission",
+        Condition: "TeamEnabled",
+        Properties: {
+          FunctionName: { Ref: "Viewer" },
+          Action: "lambda:InvokeFunctionUrl",
+          Principal: "*",
+          FunctionUrlAuthType: "NONE",
+        },
+      },
+      ViewerUrlInvokePermission: {
+        Type: "AWS::Lambda::Permission",
+        Condition: "TeamEnabled",
+        Properties: {
+          FunctionName: { Ref: "Viewer" },
+          Action: "lambda:InvokeFunction",
+          Principal: "*",
+          InvokedViaFunctionUrl: true,
+        },
+      },
     },
     Outputs: {
       TableName: {
@@ -230,6 +407,23 @@ export function buildTemplate(): CfnTemplate {
       TemplateRevision: {
         Description: "Monotonic template revision — lets the app detect (and refuse) downgrades.",
         Value: String(TEMPLATE_REVISION),
+      },
+      // Present only when the premium plane exists — their absence is how the admin plane
+      // knows the team dashboard is off.
+      ViewerUrl: {
+        Condition: "TeamEnabled",
+        Description: "The team dashboard your studio logs into — read-only, in your own account.",
+        Value: { "Fn::GetAtt": ["ViewerUrl", "FunctionUrl"] },
+      },
+      ViewerPoolId: {
+        Condition: "TeamEnabled",
+        Description: "Cognito user pool holding the team's viewer accounts.",
+        Value: { Ref: "ViewerPool" },
+      },
+      ViewerClientId: {
+        Condition: "TeamEnabled",
+        Description: "Public app client the dashboard page authenticates with.",
+        Value: { Ref: "ViewerPoolClient" },
       },
     },
   };

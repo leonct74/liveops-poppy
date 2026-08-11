@@ -91,4 +91,69 @@ describe("buildTemplate", () => {
       expect(tpl.Outputs).toHaveProperty(key);
     }
   });
+
+  /**
+   * The premium team plane (DESIGN §10). The invariant that matters commercially AND
+   * ethically: a FREE deployment must create none of it and pay for none of it — so every
+   * viewer resource is gated on the TeamEnabled condition, and the default is "no".
+   */
+  describe("team dashboard (premium, CFN-gated)", () => {
+    const VIEWER_RESOURCES = [
+      "ViewerPool",
+      "ViewerPoolClient",
+      "ViewerRole",
+      "ViewerLogGroup",
+      "Viewer",
+      "ViewerUrl",
+      "ViewerUrlPermission",
+      "ViewerUrlInvokePermission",
+    ];
+
+    it("defaults to OFF and gates every viewer resource on the condition", () => {
+      expect((tpl.Parameters as any).TeamDashboardEnabled.Default).toBe("no");
+      expect((tpl.Parameters as any).TeamDashboardEnabled.AllowedValues).toEqual(["yes", "no"]);
+      expect((tpl as any).Conditions.TeamEnabled).toEqual({
+        "Fn::Equals": [{ Ref: "TeamDashboardEnabled" }, "yes"],
+      });
+      for (const name of VIEWER_RESOURCES) {
+        expect(resources[name], `${name} must exist`).toBeTruthy();
+        expect(resources[name]!.Condition, `${name} must be gated`).toBe("TeamEnabled");
+      }
+    });
+
+    it("gates the viewer outputs too, so their absence means 'not enabled'", () => {
+      for (const key of ["ViewerUrl", "ViewerPoolId", "ViewerClientId"]) {
+        expect((tpl.Outputs as any)[key].Condition).toBe("TeamEnabled");
+      }
+    });
+
+    it("gives the viewer Lambda READ-ONLY data access — never config writes or deletes", () => {
+      const stmts = resources.ViewerRole!.Properties.Policies[0].PolicyDocument.Statement;
+      const dynamo = stmts.find((s: any) => String(s.Action[0]).startsWith("dynamodb"));
+      expect(dynamo.Action).toEqual(["dynamodb:GetItem", "dynamodb:Query"]);
+      const forbidden = /PutItem|UpdateItem|DeleteItem|BatchWrite/;
+      expect(JSON.stringify(stmts)).not.toMatch(forbidden);
+    });
+
+    it("creates viewers by admin invite only — never self-signup into a studio's numbers", () => {
+      expect(resources.ViewerPool!.Properties.AdminCreateUserConfig.AllowAdminCreateUserOnly).toBe(true);
+      // Email-only recovery: a viewer resets their own password; the admin never learns it.
+      expect(resources.ViewerPool!.Properties.AccountRecoverySetting.RecoveryMechanisms[0].Name).toBe(
+        "verified_email",
+      );
+    });
+
+    it("uses a PUBLIC app client (a browser page can hold no secret)", () => {
+      expect(resources.ViewerPoolClient!.Properties.GenerateSecret).toBe(false);
+      expect(resources.ViewerPoolClient!.Properties.ExplicitAuthFlows).toContain("ALLOW_USER_PASSWORD_AUTH");
+      // Don't leak whether an email is registered.
+      expect(resources.ViewerPoolClient!.Properties.PreventUserExistenceErrors).toBe("ENABLED");
+    });
+
+    it("ships the viewer in the SAME zip as the collector, under its own handler", () => {
+      expect(resources.Viewer!.Properties.Code).toEqual(resources.Collector!.Properties.Code);
+      expect(resources.Viewer!.Properties.Handler).toBe("viewer.handler");
+      expect(resources.Viewer!.DependsOn).toContain("ViewerLogGroup");
+    });
+  });
 });

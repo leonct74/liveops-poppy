@@ -27,10 +27,24 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "feedback", label: "Feedback" },
 ];
 
+/**
+ * ?screen=<tab> picks the landing tab — how the listing screenshots are captured
+ * headlessly (each tab is URL-addressable), and a plain deep link for docs.
+ * Unknown or absent → dashboard, same as before.
+ */
+function initialTab(): Tab {
+  try {
+    const t = new URLSearchParams(window.location.search).get("screen");
+    return TABS.some((x) => x.id === t) ? (t as Tab) : "dashboard";
+  } catch {
+    return "dashboard";
+  }
+}
+
 export function App({ apiImpl }: { apiImpl?: Api } = {}) {
   const live = apiImpl ?? liveApi;
   const [status, setStatus] = useState<DeploymentStatus | null>(null);
-  const [tab, setTab] = useState<Tab>("dashboard");
+  const [tab, setTab] = useState<Tab>(initialTab);
   const [titleId, setTitleId] = useState<string>("");
 
   // "Deployed" is read from AWS, never remembered — so this flips on its own the moment

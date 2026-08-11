@@ -29,12 +29,14 @@ Everything the submission form asks for, ready to paste. Prepared 2026-08-11; th
   - Live cost estimate from AWS's own price list — including the honest "$0 so far" state
   - One-click teardown; resource transparency via the host
 
-- **Screenshots (take from a dev install at submission time, ≤8, captions ≤120 chars):**
+- **Screenshots** — ✅ two SHIPPED (2026-08-11): captured headlessly from the
+  demo-mode frontend (`?screen=<tab>` param added for exactly this; regen with
+  Chrome `--headless --screenshot` at 1400×1015 → `cwebp -q 82`), staged in
+  agentspoppy-web `public/poppies/liveopspoppy/{1,2}.webp` — dashboard with demo
+  data + the config editor with history. Still to take DURING the live-deploy
+  gate (demo mode can't pose for them honestly):
   1. Deployment card mid-deploy — "Your LiveOps stack, deploying into your own account"
-  2. Dashboard with data — "Yesterday's players, sessions and events — from your own DynamoDB"
-  3. Dashboard $0 state — "Nothing has arrived yet, so nothing is being billed"
-  4. Config editor — "Flip a flag; your live game sees it in seconds"
-  5. SDK export — "One generated C# file. Drop it into Unity and call Track()"
+  2. Titles & SDK with the generated C# — "One generated C# file. Drop it into Unity and call Track()"
 
 - **Age rating:** `everyone` (admin tool; questionnaire answers are all "no").
 - **Data & privacy:** **No data leaves the user's cloud.** Player events flow from
@@ -57,6 +59,15 @@ it only stops them building it out of this code, which the originality rule forb
 anyway. Same rules for first-party and third-party — /developers/licensing says so
 explicitly. (Policy commit in agentspoppy-web, 2026-08-11; ships with the held web
 deploy.)
+
+## Status 2026-08-11: SEEDED (held)
+
+The catalogue entry is written and verified — `catalog-seed.json` in agentspoppy-web
+(category gaming, license PolyForm-Shield-1.0.0, no packages → the page says "listed
+but has not published a downloadable package yet"). It sits in a clearly-labelled
+held commit that **must not deploy before this repo is public** (the listing links
+repo + issues). After the live gate: publish the zip, add `packages` + bump
+screenshots, and the listing becomes installable.
 
 ## Gates before Submit (in order)
 

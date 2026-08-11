@@ -65,4 +65,22 @@ describe("App", () => {
     expect(screen.queryByRole("button", { name: "Create" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Rotate key" })).not.toBeInTheDocument();
   });
+
+  it("lands on the tab named by ?screen= (how listing screenshots are captured), else dashboard", async () => {
+    window.history.replaceState(null, "", "/?screen=config");
+    try {
+      render(<App apiImpl={demoApi()} />);
+      expect(screen.getByRole("button", { name: "Remote config" })).toHaveAttribute("aria-current", "page");
+    } finally {
+      window.history.replaceState(null, "", "/");
+    }
+
+    window.history.replaceState(null, "", "/?screen=nonsense");
+    try {
+      render(<App apiImpl={demoApi()} />);
+      expect(screen.getAllByRole("button", { name: "Dashboard" }).pop()).toHaveAttribute("aria-current", "page");
+    } finally {
+      window.history.replaceState(null, "", "/");
+    }
+  });
 });

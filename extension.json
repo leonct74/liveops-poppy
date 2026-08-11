@@ -118,6 +118,24 @@
           "GetProducts"
         ],
         "resourceScope": "*"
+      },
+      {
+        "service": "cognito-idp",
+        "actions": [
+          "CreateUserPool",
+          "DeleteUserPool",
+          "DescribeUserPool",
+          "UpdateUserPool",
+          "CreateUserPoolClient",
+          "DeleteUserPoolClient",
+          "DescribeUserPoolClient",
+          "AdminCreateUser",
+          "AdminDeleteUser",
+          "ListUsers",
+          "GetUserPoolMfaConfig",
+          "SetUserPoolMfaConfig"
+        ],
+        "resourceScope": "arn:aws:cognito-idp:*:*:userpool/*"
       }
     ],
     "limits": null

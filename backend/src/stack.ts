@@ -238,7 +238,29 @@ export interface DeployResult {
  * Before deploying we ensure the per-account deploy bucket exists and upload the
  * collector's code zip to it (content-addressed key), then point the stack at it.
  */
-export async function deploy(ctx: AwsCtx, attribution: AttributionContext): Promise<DeployResult> {
+/**
+ * Every stack Output as a plain map. The team plane's outputs are condition-gated, so their
+ * ABSENCE is how the admin plane knows the premium dashboard isn't enabled.
+ */
+export async function stackOutputs(ctx: Pick<AwsCtx, "cfn">): Promise<Record<string, string>> {
+  const stack = await describe(ctx.cfn, stackName);
+  const out: Record<string, string> = {};
+  for (const o of stack?.Outputs ?? []) {
+    if (o.OutputKey && o.OutputValue) out[o.OutputKey] = o.OutputValue;
+  }
+  return out;
+}
+
+export async function deploy(
+  ctx: AwsCtx,
+  attribution: AttributionContext,
+  /**
+   * Premium team dashboard (DESIGN §10). Carried through as a stack parameter so the free
+   * path creates none of it. Undefined = keep whatever the stack already has, so an ordinary
+   * "update backend" can never silently switch a studio's dashboard off (or on).
+   */
+  teamDashboard?: boolean,
+): Promise<DeployResult> {
   const { cfn, s3, region, accountId } = ctx;
   // The stack MUST carry attribution or AgentsPoppy can neither show nor tear down what
   // we made — so refuse rather than deploy an untrackable footprint.
@@ -272,12 +294,20 @@ export async function deploy(ctx: AwsCtx, attribution: AttributionContext): Prom
   await ensureDeployBucket(s3, bucket, region, attrTags);
   await uploadLambdaCode(s3, bucket, lambdaCodeKey, lambdaZipBase64);
 
+  // On an UPDATE, leaving a parameter out would reset it to the template default ("no"),
+  // which would delete a paying studio's dashboard as a side effect of a routine update.
+  // So: an explicit choice wins; otherwise reuse what the stack already has; and on a
+  // first create there is nothing to reuse, so fall back to off.
+  const deployedTeam = before?.Parameters?.find((p) => p.ParameterKey === "TeamDashboardEnabled")?.ParameterValue;
+  const teamValue = teamDashboard === undefined ? (deployedTeam ?? "no") : teamDashboard ? "yes" : "no";
+
   const args = {
     StackName: stackName,
     TemplateBody: templateJson,
     Parameters: [
       { ParameterKey: "LambdaCodeBucket", ParameterValue: bucket },
       { ParameterKey: "LambdaCodeKey", ParameterValue: lambdaCodeKey },
+      { ParameterKey: "TeamDashboardEnabled", ParameterValue: teamValue },
     ],
     Capabilities: CAPABILITIES,
     Tags,

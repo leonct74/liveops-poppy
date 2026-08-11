@@ -11,12 +11,14 @@ import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { PricingClient } from "@aws-sdk/client-pricing";
 import { S3Client } from "@aws-sdk/client-s3";
 import { brokerCredentialsProvider, readBootstrap } from "./boot";
-import { deploy, getStatus, tableName, teardown, type AwsCtx } from "./stack";
+import { deploy, getStatus, stackOutputs, tableName, teardown, type AwsCtx } from "./stack";
 import { sourceCommit } from "./generated/backend-bundle";
 import { TitleRegistry } from "./titles";
 import { ConfigStore, parseEnv } from "./config";
 import { StatsReader } from "./stats";
 import { makePriceLoader, PRICING_API_REGION } from "./pricing";
+import { CognitoIdentityProviderClient } from "@aws-sdk/client-cognito-identity-provider";
+import { getTeamStatus, inviteViewer, removeViewer, type TeamDeps } from "./team";
 import { PlayerEraser } from "./players";
 import { TITLE_ID_RE } from "../../shared/src/keys";
 
@@ -45,6 +47,12 @@ const stats = new StatsReader(db, tableName, Date.now, loadPrices);
 const eraser = new PlayerEraser(db, tableName);
 
 const attribution = { accountId: boot.account.accountId, connectionId: boot.connectionId };
+
+// The premium team plane. The Cognito client is built once; the pool it manages is read
+// from the stack's (condition-gated) outputs on every call, so "is the dashboard enabled?"
+// is always answered by AWS rather than by remembered state.
+const cognito = new CognitoIdentityProviderClient({ region, credentials });
+const teamDeps = (): TeamDeps => ({ cognito, outputs: () => stackOutputs(aws) });
 
 function json(res: ServerResponse, status: number, body: unknown): void {
   res.writeHead(status, { "content-type": "application/json" });
@@ -89,10 +97,49 @@ const server = createServer(async (req, res) => {
       return json(res, 200, await getStatus(aws));
     }
     if (method === "POST" && parts[0] === "deploy") {
+      // No team flag here: a routine "update backend" must never switch a studio's
+      // dashboard on or off as a side effect. Only /team/enable|disable decides that.
       return json(res, 200, await deploy(aws, attribution));
     }
     if (method === "POST" && parts[0] === "teardown") {
       return json(res, 200, { ok: true, ...(await teardown(aws)) });
+    }
+
+    // ── Team dashboard (premium) ───────────────────────────────────────────────────
+    if (parts[0] === "team") {
+      if (method === "GET" && parts.length === 1) {
+        return json(res, 200, await getTeamStatus(teamDeps()));
+      }
+      // Enabling redeploys the stack with the viewer plane on. Disabling REMOVES it —
+      // see /team/disable's comment; it is never presented as a pause.
+      if (method === "POST" && parts[1] === "enable") {
+        return json(res, 200, await deploy(aws, attribution, true));
+      }
+      if (method === "POST" && parts[1] === "disable") {
+        // This deletes the Cognito pool with the stack's viewer resources: every viewer
+        // account is destroyed and a later re-enable mints a NEW dashboard address. The UI
+        // must have said so before calling this (DESIGN §10).
+        return json(res, 200, await deploy(aws, attribution, false));
+      }
+      if (parts[1] === "viewers") {
+        const status = await getTeamStatus(teamDeps());
+        if (!status.enabled || !status.userPoolId) {
+          return json(res, 409, {
+            error: "The team dashboard isn't set up yet. Enable it first.",
+          });
+        }
+        if (method === "GET" && parts.length === 2) {
+          return json(res, 200, { viewers: status.viewers ?? [] });
+        }
+        if (method === "POST" && parts.length === 2) {
+          const { email } = await readBody(req);
+          return json(res, 200, await inviteViewer(teamDeps(), status.userPoolId, String(email ?? "")));
+        }
+        if (method === "DELETE" && parts.length === 3) {
+          await removeViewer(teamDeps(), status.userPoolId, decodeURIComponent(parts[2]!));
+          return json(res, 200, { ok: true });
+        }
+      }
     }
 
     // ── Titles ──────────────────────────────────────────────────────────────────────

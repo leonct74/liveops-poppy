@@ -211,8 +211,22 @@ reading the matrix.
 ## 10. Pricing & competition (the page-6 story)
 
 **DECIDED (founder, 2026-08-11): free core + ONE premium — the Team dashboard —
-at $14.99/yr per title, unlimited team members.** Never per-MAU, never per-event; that
-inversion *is* the marketing. The retired "pay once" framing stays retired.
+at $12/yr per title, unlimited team members, billed yearly and presented as
+"$1 a month per game".** Never per-MAU, never per-event; that inversion *is* the marketing.
+The retired "pay once" framing stays retired.
+
+**Why below the house $14.99** (founder call): the unit is per *title*, and a studio ships
+several — so the per-title price can sit lower than a per-domain poppy's and still earn more
+from a real studio (five games = $60/yr). $12 also lands exactly on $1/month, which is the
+most quotable number in the pitch.
+
+**Presentation rule — the monthly framing is COPY, never the button.** The platform's
+`<agentspoppy-purchase>` renders the true billing interval inside a shadow root and cannot be
+restyled (deliberate anti-deception: nobody may show "$1/mo" on a control that charges $12
+once a year). So the button says $12.00/yr and our own text beside it says "that's $1 a month
+per game, billed once a year". **Compute that monthly figure from the live `purchaseInfo`
+price at render time — never hardcode it** — so it follows the platform product if the price
+ever changes (price lives in the platform, never as a code constant).
 
 **Free forever:** deploy, collect, remote config, the SDK, the daily-cap bill guard, the
 admin's own dashboard in the desktop app, teardown. Everything a solo developer needs. This
@@ -231,10 +245,9 @@ TrafficPoppy specced the viewer plane. Reuse both.
 
 **Why per TITLE and not per studio.** House rule is *per domain, never per seat*: MailPoppy
 sells a domain with unlimited mailboxes, TrafficPoppy a domain with unlimited viewers. A
-studio's analogue is one **game**, with unlimited team members reading it. It also reconciles
-the two earlier intuitions: a solo dev with one game pays $14.99 (impulse-priced), a
-five-game studio pays $75 — essentially the ~$79 the per-studio reasoning arrived at. Price
-lives in the platform product, never as a code constant.
+studio's analogue is one **game**, with unlimited team members reading it. A solo dev with one
+game pays $12 — a dollar a month; a five-game studio pays $60. Price lives in the platform
+product, never as a code constant.
 
 **Why a studio pays at all** (the objection to answer in the listing, founder 2026-08-11):
 not for the collector code — that part *is* a weekend, and it is free here. They pay because
@@ -243,7 +256,7 @@ price must track usage) while we host nothing and charge flat. Same job, infrast
 removed. **Do NOT build the pitch on "our updates overwrite your forked Lambda"** — true
 (the code is a CFN parameter) but nobody subscribes to avoid losing updates to code they
 deliberately forked. The honest retention is that maintaining a fork costs more than
-$14.99/yr, forever.
+$12/yr, forever.
 
 Cost math shown in-app and in the listing (worst-case honest): 10k DAU × ~50 events/day
 = 15M events/mo, batched ≤25 ⇒ ~600k Lambda requests (inside free tier), ~2–4M DynamoDB
@@ -252,7 +265,7 @@ writes ⇒ **roughly $3–6/mo of AWS at 10k DAU; pennies for a small title; ~$0
 | | LiveOpsPoppy | PlayFab | Unity Gaming Services | GameAnalytics | Nakama (self-host) |
 |---|---|---|---|---|---|
 | Pricing model | flat/yr + own AWS | per-MAU tiers | free tiers → usage | "free" | free + your servers |
-| 10k DAU cost | ~$79/yr + ~$5/mo AWS | grows with MAU | grows with usage | $0 | VPS + DB 24/7 + ops |
+| 10k DAU cost | ~$12/yr/title + ~$5/mo AWS | grows with MAU | grows with usage | $0 | VPS + DB 24/7 + ops |
 | Who holds player data | the studio | Microsoft | Unity | GameAnalytics | the studio |
 | Can vendor reprice shipped games | no — no vendor in path | yes | proven (2023) | yes (data terms) | no |
 | Servers to operate | none | none | none | none | yes |
@@ -274,7 +287,7 @@ writes ⇒ **roughly $3–6/mo of AWS at 10k DAU; pennies for a small title; ~$0
    term game developers themselves use — clearer *to the target audience* than a generic
    "game" name, even though outsiders won't parse it. (The earlier "games-only ⇒ 'game' in
    the name" criterion was superseded by this audience-clarity argument.)
-2. ~~**Pricing unit**~~ — **CLOSED (founder, 2026-08-11): $14.99/yr per title, unlimited
+2. ~~**Pricing unit**~~ — **CLOSED (founder, 2026-08-11): $12/yr per title (= $1/mo, billed yearly), unlimited
    team members, gating the Team dashboard only. See §10.** ("unlimited titles" was the wrong
    rhyme: the seat-like thing to leave unlimited is the *team*, not the games.)
 3. **Godot snippet in v1?** Cheap, and the Godot crowd is the most ownership-aligned audience.

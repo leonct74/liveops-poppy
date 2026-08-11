@@ -67,6 +67,28 @@ describe("App", () => {
   });
 
   /**
+   * Live backend + no titles = the onboarding gap the founder hit (2026-08-11): the tab
+   * order serves the hundredth visit, so the FIRST visit needs the app to point the way.
+   * A banner names the next step in plain words and jumps straight to Titles & SDK.
+   */
+  it("guides a live-but-empty deployment to 'Create your game', and jumps there", async () => {
+    const api = liveApi({ listTitles: vi.fn(async () => ({ titles: [] })) });
+    render(<App apiImpl={api} />);
+
+    expect(await screen.findByText(/Your backend is live/)).toBeInTheDocument();
+    expect(screen.getByText(/register your game/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Create your game" }));
+    expect(screen.getByRole("button", { name: "Titles & SDK" })).toHaveAttribute("aria-current", "page");
+    // No demo banner in live mode, and no next-step banner once a title exists (below).
+    expect(screen.queryByText(/You're looking at demo data/)).not.toBeInTheDocument();
+  });
+
+  it("drops the next-step banner once a title exists", async () => {
+    render(<App apiImpl={liveApi()} />);
+    await waitFor(() => expect(screen.queryByText(/Your backend is live\./)).not.toBeInTheDocument());
+  });
+
+  /**
    * The app must flip demo → live BY ITSELF when the stack completes. The Setup panel
    * only polls while mounted, so a user who starts a deploy and browses other tabs
    * (what a two-minute wait invites) previously stayed on "demo data" forever — the

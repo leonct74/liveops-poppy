@@ -123,6 +123,25 @@ export function App({ apiImpl, statusPollMs = 10_000 }: { apiImpl?: Api; statusP
         </div>
       )}
 
+      {/* The tabs are ordered for the hundredth visit (Dashboard first), but the FIRST
+          visit flows Setup → Titles → Config — right to left. So at each stage the app
+          says what comes next instead of leaving the user to guess (founder field
+          report, 2026-08-11: "create a title" meant nothing and nothing pointed there). */}
+      {isLive && !titleId && (
+        <div className="banner info" style={{ marginBottom: 14 }}>
+          <div className="spread">
+            <span>
+              <strong>Your backend is live.</strong> One step left: register your game — the
+              industry word is a &ldquo;title&rdquo;. It gets an id, a secret-shown-once key, and
+              its own daily event cap.
+            </span>
+            <button className="btn btn-primary btn-sm" onClick={() => setTab("titles")}>
+              Create your game
+            </button>
+          </div>
+        </div>
+      )}
+
       <nav className="tabs" style={{ marginBottom: 14 }} aria-label="Sections">
         {TABS.map((t) => (
           <button

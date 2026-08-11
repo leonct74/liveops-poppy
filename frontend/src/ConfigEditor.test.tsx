@@ -31,6 +31,44 @@ function editorApi(over: Partial<Api> = {}): Api {
 }
 
 describe("ConfigEditor", () => {
+  /**
+   * A first-time user faces an empty box and no idea what to write — the founder's own
+   * first run stalled exactly here (2026-08-11). The honest answer ("any JSON object,
+   * they're YOUR settings, we never interpret them") is precisely what a blank textarea
+   * can't say, so the unpublished state must teach it AND offer a starting point.
+   */
+  const emptyApi = (over: Partial<Api> = {}) =>
+    editorApi({
+      getConfig: vi.fn(async () => ({ env: "prod" as const, version: 0, json: "{}" })),
+      configHistory: vi.fn(async () => ({ versions: [] })),
+      ...over,
+    });
+
+  it("explains what a config document is when nothing is published yet", async () => {
+    render(<ConfigEditor api={emptyApi()} titleId="abcd1234" />);
+    expect(await screen.findByText(/yours to invent/i)).toBeInTheDocument();
+    expect(screen.getByText(/never interprets it/i)).toBeInTheDocument();
+    expect(screen.getByText(/by name, with a fallback/i)).toBeInTheDocument();
+  });
+
+  it("fills the editor with a working example on request", async () => {
+    render(<ConfigEditor api={emptyApi()} titleId="abcd1234" />);
+    await userEvent.click(await screen.findByRole("button", { name: "Start from an example" }));
+
+    const box = screen.getByLabelText("Config document") as HTMLTextAreaElement;
+    const parsed = JSON.parse(box.value);
+    expect(parsed.balance.shotgunDamage).toBe(34);
+    expect(parsed.shop.weekendSaleActive).toBe(false);
+    expect(validate(box.value)).toBeNull(); // publishable as-is
+  });
+
+  it("teaches nothing once a config exists — the guidance is for the empty state only", async () => {
+    render(<ConfigEditor api={editorApi()} titleId="abcd1234" />);
+    await screen.findByLabelText("Config document");
+    expect(screen.queryByText(/yours to invent/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Start from an example" })).not.toBeInTheDocument();
+  });
+
   it("requires an inline confirm before publishing — a publish reaches live players", async () => {
     const api = editorApi();
     render(<ConfigEditor api={api} titleId="abcd1234" />);

@@ -11,6 +11,23 @@ import type { ConfigVersion, ConfigView, Env } from "./types";
 
 const ENVS: Env[] = ["dev", "prod"];
 
+/**
+ * What a first config looks like. Deliberately three familiar LiveOps levers — an economy
+ * price, two difficulty numbers, a feature switch — rather than an abstract `{"key":"value"}`:
+ * the shape teaches what this document is FOR. The sample game (`sample-game/`) reads exactly
+ * these keys, so publishing this and opening the game is a complete, visible round trip.
+ */
+const EXAMPLE_CONFIG = `{
+  "balance": {
+    "shotgunDamage": 34,
+    "bossHealthMultiplier": 1.15
+  },
+  "shop": {
+    "starterBundlePrice": 4.99,
+    "weekendSaleActive": false
+  }
+}`;
+
 export function ConfigEditor({ api, titleId, readOnly }: { api: Api; titleId: string; readOnly?: boolean }) {
   const [env, setEnv] = useState<Env>("prod");
   const [live, setLive] = useState<ConfigView | null>(null);
@@ -43,6 +60,9 @@ export function ConfigEditor({ api, titleId, readOnly }: { api: Api; titleId: st
   // that out on click is one round-trip too late.
   const localError = validate(draft);
   const dirty = live !== null && draft !== live.json;
+  // "Nothing here yet" — never published, and the draft is still the empty object the
+  // backend hands back for an unpublished env. This is the state that needs teaching.
+  const isEmpty = live?.version === 0 && draft.replace(/\s/g, "") === "{}";
 
   return (
     <div className="card">
@@ -77,6 +97,28 @@ export function ConfigEditor({ api, titleId, readOnly }: { api: Api; titleId: st
         )}
       </p>
 
+      {/* An empty box with no example told the user nothing about what to write — the
+          honest answer ("any JSON object; they're YOUR game's settings, we never
+          interpret them") is exactly the answer a blank textarea cannot give. So the
+          unpublished state explains it and offers a starting point (founder field
+          report, 2026-08-11). */}
+      {isEmpty && (
+        <div className="banner info" style={{ marginBottom: 10 }}>
+          <p style={{ margin: "0 0 8px" }}>
+            <strong>This document is yours to invent.</strong> Any JSON object works —
+            LiveOpsPoppy stores and serves it, and never interprets it. Put in the numbers you
+            want to change without shipping an update: prices, difficulty, feature switches.
+            Your game reads each value <em>by name, with a fallback</em>, so a key you haven&apos;t
+            published yet simply keeps the built-in default.
+          </p>
+          {!readOnly && (
+            <button className="btn btn-sm" onClick={() => setDraft(EXAMPLE_CONFIG)}>
+              Start from an example
+            </button>
+          )}
+        </div>
+      )}
+
       <textarea
         className="input"
         style={{ minHeight: 200 }}
@@ -85,6 +127,15 @@ export function ConfigEditor({ api, titleId, readOnly }: { api: Api; titleId: st
         onChange={(e) => setDraft(e.target.value)}
         aria-label="Config document"
       />
+
+      {isEmpty && (
+        <p className="muted" style={{ fontSize: 12, marginTop: 8, marginBottom: 0 }}>
+          With the example above published, a game asks for{" "}
+          <code>balance.shotgunDamage</code> and gets 34 — change it here, publish, and every
+          running copy picks it up within a minute. (The sample game in{" "}
+          <code>sample-game/</code> reads exactly these keys.)
+        </p>
+      )}
 
       {localError && (
         <div className="banner err" style={{ marginTop: 8 }}>

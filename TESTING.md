@@ -12,7 +12,7 @@ npm install
 npm run typecheck && npm run test
 ```
 
-141 tests. This covers the parts that are expensive to get wrong: the DynamoDB key
+168 tests. This covers the parts that are expensive to get wrong: the DynamoDB key
 contract, the daily event cap, the cardinality guard, retention bucketing, config
 publish/rollback, the update-ordering guard that refuses backend downgrades, and the
 generated Unity source.

@@ -179,6 +179,11 @@ export function buildTemplate(): CfnTemplate {
             AllowOrigins: ["*"],
             AllowMethods: ["GET", "POST"],
             AllowHeaders: ["content-type", "if-none-match"],
+            // Without ExposeHeaders a browser client can't READ these cross-origin:
+            // ETag drives config revalidation, Retry-After the 429 backoff. (Both are
+            // also derivable from response bodies — "v" and "retryAfter" — so native
+            // clients lose nothing either way.)
+            ExposeHeaders: ["etag", "retry-after"],
             MaxAge: 86400,
           },
         },

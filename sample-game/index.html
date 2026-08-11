@@ -1,0 +1,239 @@
+<!doctype html>
+<!-- Sunken Keep — the LiveOpsPoppy sample client.
+
+     A tiny but REAL game that integrates exactly the way a shipped game does, from
+     docs/REST.md alone (no SDK): it fetches remote config on boot and every minute
+     (If-None-Match revalidation, so most polls are a 304), APPLIES that config to
+     gameplay — damage, boss health, shop price, the weekend-sale banner — and sends
+     real sessions and events to the collector. Publish a config change in the poppy
+     and watch this game change with no redeploy: that is the whole product, playable.
+
+     Multiple users: every browser/device mints its own install id, so opening this on
+     your Mac and your phone shows two players in the dashboard ("New player" below
+     mints a fresh id on one device). The endpoint/title/key can also ride the URL —
+     ?endpoint=…&title=…&key=… — so one link moves it to your phone. The key is
+     public-by-design (routing + abuse control, capped server-side), so a key in a URL
+     leaks nothing the game binary wouldn't.
+
+     Serve it any way you like, e.g.:  python3 -m http.server 8321 -d sample-game
+     then open http://<your-mac-ip>:8321 on the phone (same Wi-Fi). -->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+<title>Sunken Keep — LiveOpsPoppy sample game</title>
+<style>
+  :root { --bg:#101418; --card:#1a2129; --line:#2b3542; --text:#e8edf2; --muted:#8fa0b0;
+          --gold:#e6c68a; --green:#7fce9a; --red:#e0685a; --hp:#c94f4f; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.5 -apple-system,system-ui,sans-serif;
+         display:flex; justify-content:center; min-height:100vh; }
+  main { width:min(440px,100%); padding:18px; }
+  h1 { font-size:22px; margin:0 0 2px; } .sub { color:var(--muted); font-size:13px; margin:0 0 14px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; margin-bottom:12px; }
+  label { display:block; font-size:12px; color:var(--muted); margin:8px 0 2px; }
+  input { width:100%; padding:9px 10px; border-radius:8px; border:1px solid var(--line); background:#0d1116; color:var(--text); font-size:14px; }
+  button { border:0; border-radius:10px; padding:12px 16px; font-size:15px; font-weight:600; cursor:pointer; }
+  .primary { background:var(--gold); color:#221a0d; width:100%; margin-top:12px; }
+  .ghost { background:transparent; color:var(--muted); border:1px solid var(--line); }
+  #boss { width:100%; font-size:17px; padding:26px 16px; background:#243040; color:var(--text);
+          border:1px solid var(--line); user-select:none; }
+  #boss:active { transform:scale(0.985); }
+  .bar { height:14px; background:#0d1116; border:1px solid var(--line); border-radius:7px; overflow:hidden; margin:10px 0 6px; }
+  .bar i { display:block; height:100%; background:var(--hp); transition:width .12s; }
+  .row { display:flex; gap:8px; align-items:center; justify-content:space-between; }
+  .stat { color:var(--muted); font-size:13px; }
+  .sale { display:none; background:var(--red); color:#fff; font-size:11px; font-weight:700;
+          border-radius:999px; padding:2px 9px; letter-spacing:.06em; }
+  .toast { position:fixed; left:50%; bottom:22px; transform:translateX(-50%); background:#26313e; color:var(--text);
+           border:1px solid var(--line); border-radius:10px; padding:9px 16px; font-size:13px; opacity:0; transition:opacity .3s; pointer-events:none; }
+  .toast.show { opacity:1; }
+  .foot { color:var(--muted); font-size:11px; font-family:ui-monospace,monospace; word-break:break-all; }
+  .err { color:var(--red); font-size:13px; min-height:18px; }
+  #game { display:none; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Sunken Keep</h1>
+  <p class="sub">The LiveOpsPoppy sample client — a real game on your real backend.</p>
+
+  <section id="setup" class="card">
+    <strong>Connect to your deployment</strong>
+    <label>Collector endpoint (Setup tab after deploy)</label>
+    <input id="in-endpoint" placeholder="https://xxxx.lambda-url.eu-west-1.on.aws" autocapitalize="off" />
+    <label>Title id</label>
+    <input id="in-title" placeholder="ab12cd34" autocapitalize="off" />
+    <label>Title key (shown once at creation — public by design)</label>
+    <input id="in-key" autocapitalize="off" />
+    <p class="err" id="setup-err"></p>
+    <button class="primary" id="btn-start">Enter the keep</button>
+  </section>
+
+  <section id="game">
+    <div class="card">
+      <div class="row"><strong id="boss-name">Level 1 — Drowned Sentinel</strong><span class="stat" id="timer">15s</span></div>
+      <div class="bar"><i id="hp" style="width:100%"></i></div>
+      <button id="boss">⚔️ Strike (<span id="dmg">30</span> dmg)</button>
+      <div class="row" style="margin-top:8px">
+        <span class="stat">Kills: <b id="kills">0</b></span>
+        <span class="stat">Falls: <b id="fails">0</b></span>
+      </div>
+    </div>
+    <div class="card">
+      <div class="row">
+        <div><strong>Starter bundle</strong> <span class="sale" id="sale">WEEKEND SALE</span><br />
+          <span class="stat">$<span id="price">4.99</span> — 500 pearls (pretend)</span></div>
+        <button class="ghost" id="btn-buy">Buy</button>
+      </div>
+    </div>
+    <div class="card row">
+      <button class="ghost" id="btn-new-player">New player</button>
+      <span class="foot" id="foot"></span>
+    </div>
+  </section>
+  <div class="toast" id="toast"></div>
+</main>
+
+<script>
+"use strict";
+// ---------- identity & connection (docs/REST.md: iid persists, sid is per boot) ------
+const qs = new URLSearchParams(location.search);
+const store = {
+  get: (k, d) => { try { return localStorage.getItem("sk." + k) ?? d; } catch { return d; } },
+  set: (k, v) => { try { localStorage.setItem("sk." + k, v); } catch {} },
+};
+for (const k of ["endpoint", "title", "key"]) if (qs.get(k)) store.set(k, qs.get(k).trim());
+const iid = store.get("iid") || (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2));
+store.set("iid", iid);
+const sid = Array.from(crypto.getRandomValues(new Uint8Array(8)), (b) => b.toString(16).padStart(2, "0")).join("");
+const bootAt = Date.now();
+
+const $ = (id) => document.getElementById(id);
+const toast = (msg) => { $("toast").textContent = msg; $("toast").classList.add("show");
+                         setTimeout(() => $("toast").classList.remove("show"), 2600); };
+
+// ---------- events: queue + batch flush (≤25/batch; 429 = drop, never retry) ---------
+let queue = [];
+let capped = false;
+function track(n, v) { queue.push(v === undefined ? { n } : { n, v }); if (queue.length >= 10) void flush(); }
+async function flush(useBeacon) {
+  if (!queue.length || capped) return;
+  const batch = queue.splice(0, 25);
+  const body = JSON.stringify({
+    t: store.get("title"), k: store.get("key"),
+    s: { iid, sid, plat: "web", ver: "sample-1.0.0" },
+    e: batch,
+  });
+  const url = store.get("endpoint").replace(/\/+$/, "") + "/e";
+  if (useBeacon && navigator.sendBeacon) { navigator.sendBeacon(url, new Blob([body], { type: "application/json" })); return; }
+  try {
+    const res = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body });
+    if (res.status === 429) { capped = true; toast("Daily event cap reached — the bill guard. Events now drop."); }
+    else if (res.status === 403) toast("403 — check the title id and key.");
+    else if (!res.ok && res.status !== 202) queue.unshift(...batch); // 5xx: re-queue, next flush retries
+  } catch { queue.unshift(...batch); }
+}
+setInterval(() => void flush(), 8000);
+addEventListener("pagehide", () => {
+  queue.push({ n: "session_end", v: Math.round((Date.now() - bootAt) / 1000) });
+  void flush(true);
+});
+
+// ---------- remote config: fetch on boot + every 60s, revalidate by version ----------
+// The browser builds If-None-Match from the body's "v" — same value as the ETag header.
+const DEFAULTS = { balance: { shotgunDamage: 30, bossHealthMultiplier: 1 },
+                   shop: { starterBundlePrice: 4.99, weekendSaleActive: false } };
+let cfg = DEFAULTS, cfgV = 0;
+function applyConfig() {
+  $("dmg").textContent = String(dmg());
+  $("price").textContent = Number(cfg.shop?.starterBundlePrice ?? 4.99).toFixed(2);
+  $("sale").style.display = cfg.shop?.weekendSaleActive ? "inline-block" : "none";
+  $("foot").textContent = `config v${cfgV} · player ${iid.slice(0, 8)} · session ${sid.slice(0, 8)}`;
+}
+const dmg = () => Math.max(1, Math.round(Number(cfg.balance?.shotgunDamage ?? 30)));
+async function pollConfig() {
+  try {
+    const base = store.get("endpoint").replace(/\/+$/, "");
+    const res = await fetch(`${base}/config/${store.get("title")}/prod?k=${encodeURIComponent(store.get("key"))}`,
+                            { headers: cfgV ? { "if-none-match": `"v${cfgV}"` } : {} });
+    if (res.status === 304) return;
+    if (!res.ok) return;
+    const doc = await res.json();
+    const first = cfgV === 0;
+    if (doc.v !== cfgV) {
+      cfgV = doc.v;
+      cfg = { ...DEFAULTS, ...doc.config, balance: { ...DEFAULTS.balance, ...doc.config?.balance },
+              shop: { ...DEFAULTS.shop, ...doc.config?.shop } };
+      applyConfig();
+      if (!first) toast(`New config v${cfgV} applied — no redeploy.`);
+    }
+  } catch { /* offline or CORS hiccup — defaults keep the game playable, per contract */ }
+}
+setInterval(() => void pollConfig(), 60_000);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) void pollConfig(); });
+
+// ---------- the game: a boss, a timer, config-driven numbers -------------------------
+const BOSSES = ["Drowned Sentinel", "Tide Warden", "Coral Golem", "Abyss Herald", "The Keeper"];
+let level = 1, hp = 0, hpMax = 0, kills = 0, fails = 0, deadline = 0, timerId = 0;
+function startLevel() {
+  hpMax = Math.round(100 * level * Number(cfg.balance?.bossHealthMultiplier ?? 1));
+  hp = hpMax;
+  deadline = Date.now() + 15_000;
+  $("boss-name").textContent = `Level ${level} — ${BOSSES[(level - 1) % BOSSES.length]}`;
+  render();
+  clearInterval(timerId);
+  timerId = setInterval(() => {
+    const left = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+    $("timer").textContent = left + "s";
+    if (left <= 0) {
+      clearInterval(timerId);
+      fails++; $("fails").textContent = String(fails);
+      track("level_fail", level);
+      toast("The keep reclaims you. Again!");
+      startLevel();
+    }
+  }, 250);
+}
+function render() { $("hp").style.width = (100 * hp / hpMax) + "%"; $("kills").textContent = String(kills); }
+$("boss").addEventListener("click", () => {
+  hp -= dmg();
+  if (hp <= 0) {
+    kills++;
+    track("level_complete", level);
+    if (kills === 1 && !store.get("tut")) { store.set("tut", "1"); track("tutorial_done"); }
+    level++;
+    toast(`${BOSSES[(level - 2) % BOSSES.length]} falls!`);
+    startLevel();
+  } else render();
+});
+$("btn-buy").addEventListener("click", () => {
+  track("shop_open");
+  track("purchase", Number(cfg.shop?.starterBundlePrice ?? 4.99));
+  toast("Purchased (pretend) — sent as a real purchase event.");
+});
+$("btn-new-player").addEventListener("click", () => {
+  // A fresh install id = a brand-new player to the backend (daily uniques, retention).
+  try { localStorage.removeItem("sk.iid"); localStorage.removeItem("sk.tut"); } catch {}
+  location.reload();
+});
+
+// ---------- boot ---------------------------------------------------------------------
+for (const k of ["endpoint", "title", "key"]) { const el = $("in-" + k); if (el) el.value = store.get(k, ""); }
+$("btn-start").addEventListener("click", async () => {
+  const endpoint = $("in-endpoint").value.trim(), title = $("in-title").value.trim(), key = $("in-key").value.trim();
+  if (!/^https?:\/\//.test(endpoint) || !/^[a-z0-9]{4,32}$/.test(title) || key.length < 8) {
+    $("setup-err").textContent = "Endpoint must be a URL, title 4–32 of a-z0-9, key at least 8 chars.";
+    return;
+  }
+  store.set("endpoint", endpoint); store.set("title", title); store.set("key", key);
+  $("setup").style.display = "none"; $("game").style.display = "block";
+  await pollConfig();
+  applyConfig();
+  track("session_start");
+  void flush();
+  startLevel();
+});
+</script>
+</body>
+</html>

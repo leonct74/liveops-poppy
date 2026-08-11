@@ -65,6 +65,9 @@ describe("buildTemplate", () => {
 
   it("allows if-none-match through CORS — the config GET revalidates by ETag", () => {
     expect(resources.CollectorUrl!.Properties.Cors.AllowHeaders).toContain("if-none-match");
+    // Browser clients can't read these cross-origin unless exposed — ETag drives config
+    // revalidation, Retry-After the 429 backoff (the sample game runs in a browser).
+    expect(resources.CollectorUrl!.Properties.Cors.ExposeHeaders).toEqual(["etag", "retry-after"]);
   });
 
   it("takes Lambda code from content-addressed parameters (real updates, never NO_CHANGE)", () => {

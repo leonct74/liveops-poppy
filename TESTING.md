@@ -98,6 +98,39 @@ node scripts/simulate-game.mjs --endpoint <url> --title <id> --key <key> --playe
 
 ---
 
+## Testing with an actual game — `sample-game/`
+
+The simulator proves the wire; **Sunken Keep** (`sample-game/index.html`, one self-contained
+file, no build) proves the *experience*. It integrates from `docs/REST.md` alone, exactly
+like a shipped game: fetches remote config on boot and every minute (If-None-Match — most
+polls are a 304), **applies** it to gameplay (strike damage, boss health, the shop price,
+the weekend-sale banner), and sends real sessions and events.
+
+**Dry run, no AWS** — the stub speaks the collector's contract locally:
+
+```bash
+node scripts/stub-collector.mjs           # or: --cap 20 (demo the 429), --bump (config rollout every 30s)
+python3 -m http.server 8321 -d sample-game
+```
+
+Open `http://127.0.0.1:8321`, endpoint `http://127.0.0.1:8322`, any title like `demo1234`,
+any 8+ char key. The stub prints every batch it accepts.
+
+**Against your real deployment (level 3):** use the endpoint from the Setup tab and the real
+title id + key. Then:
+
+- **Multiple users**: every browser/device mints its own install id — open the game on your
+  Mac and your phone (`python3 -m http.server 8321 -d sample-game --bind 0.0.0.0`, then
+  `http://<your-mac-ip>:8321` on the same Wi-Fi) and the Dashboard counts two players.
+  The connection can ride the URL to your phone as
+  `?endpoint=…&title=…&key=…` (the key is public by design). "New player" mints a fresh
+  install id on one device.
+- **The product moment**: with the game open, publish a config change in the poppy
+  (e.g. `shotgunDamage: 60`, or `weekendSaleActive: true`) — within a minute the game
+  toasts "New config v8 applied" and the numbers on screen change. No redeploy.
+- Play a few levels, buy the (pretend) bundle, then check the Dashboard: players, sessions,
+  `level_complete` / `level_fail` / `shop_open` / `purchase` should match what you did.
+
 ## What is NOT yet testable
 
 - **The Unity SDK in a real game.** The generated `LiveOps.cs` is unit-tested as source

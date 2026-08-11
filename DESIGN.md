@@ -220,6 +220,21 @@ several — so the per-title price can sit lower than a per-domain poppy's and s
 from a real studio (five games = $60/yr). $12 also lands exactly on $1/month, which is the
 most quotable number in the pitch.
 
+**The dashboard's address (founder question, 2026-08-11): no custom domain in v1.** The
+viewer's Lambda Function URL (`https://<id>.lambda-url.<region>.on.aws/`) is already a FIXED
+address — stable for the life of the function, so a producer can bookmark it. A branded
+`stats.<studio>.com` would need CloudFront + an ACM cert in us-east-1 + a Route53 hosted zone
+the studio actually owns + DNS-validation waiting; many indie devs have no domain in Route53
+at all. It is the obvious SECOND premium feature (TrafficPoppy's True Reach shape), never the
+first: what people pay for is team access, not the pretty URL.
+
+⚠ **The address is stable while ENABLED, not across disable→re-enable.** Every viewer
+resource is gated on the CFN condition, so turning the dashboard off deletes the Lambda *and
+the Cognito pool*: re-enabling mints a NEW url and every viewer account is gone. Therefore
+the Team tab must never present "off" as a pause/toggle — it is a deliberate, explained
+removal ("this deletes your team's sign-ins and changes the dashboard address"), and the
+copy must never imply the link survives.
+
 **Presentation rule — the monthly framing is COPY, never the button.** The platform's
 `<agentspoppy-purchase>` renders the true billing interval inside a shadow root and cannot be
 restyled (deliberate anti-deception: nobody may show "$1/mo" on a control that charges $12
@@ -276,6 +291,10 @@ writes ⇒ **roughly $3–6/mo of AWS at 10k DAU; pennies for a small title; ~$0
 
 - **11a. v2 saves + leaderboards** — same stack, new tables; the risky half deliberately
   deferred until the wedge earns it.
+- **11c. Branded dashboard domain (v1.1 premium #2)** — `stats.<studio>.com` in front of the
+  viewer via CloudFront + ACM + Route53, the TrafficPoppy True Reach machinery. Deliberately
+  NOT v1 (§10): the Function URL is already fixed and free, and the domain requirement would
+  exclude every studio without a Route53 zone.
 - **11b. FlagPoppy (separate listing, later)** — strip the games skin off the config plane and
   it's **feature flags for all software teams** (LaunchDarkly charges per seat; the infra is a
   table + a Lambda). Bigger market than games, shares the config-plane code. Park until

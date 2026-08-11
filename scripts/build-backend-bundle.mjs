@@ -67,29 +67,49 @@ async function main() {
   // 2. Bundle the collector Lambda into ONE CJS file, then a deterministic zip. The AWS SDK
   //    is provided by the nodejs20.x runtime, so we mark it external — keeps the zip tiny
   //    and avoids shipping a second copy of the SDK.
-  console.log("[2/3] esbuild + zip the collector Lambda");
+  console.log("[2/3] esbuild + zip the Lambdas (collector + viewer)");
   const stage = join(tmpdir(), `lop-lambda-${process.pid}`);
   mkdirSync(stage, { recursive: true });
-  const lambdaOut = join(stage, "collector.js");
-  await esbuild.build({
-    entryPoints: [join(root, "lambdas", "src", "collector.ts")],
-    outfile: lambdaOut,
-    bundle: true,
-    platform: "node",
-    target: "node20",
-    format: "cjs",
-    minify: true, // reproducibility: strips module-boundary comments that encode install paths
-    legalComments: "none",
-    external: ["@aws-sdk/*"],
-    logLevel: "warning",
-  });
-  const collectorJs = readFileSync(lambdaOut);
+  // TWO handlers, one zip: the collector (free, always deployed) and the viewer (the
+  // premium team dashboard, created only when TeamDashboardEnabled=yes). Shipping them
+  // together keeps ONE content-addressed key, so the "did my update reach AWS?" check
+  // stays a single comparison.
+  const built = {};
+  for (const name of ["collector", "viewer"]) {
+    const out = join(stage, `${name}.js`);
+    await esbuild.build({
+      entryPoints: [join(root, "lambdas", "src", `${name}.ts`)],
+      outfile: out,
+      bundle: true,
+      platform: "node",
+      target: "node20",
+      format: "cjs",
+      minify: true, // reproducibility: strips module-boundary comments that encode install paths
+      legalComments: "none",
+      external: ["@aws-sdk/*"],
+      logLevel: "warning",
+    });
+    built[name] = readFileSync(out);
+  }
+  const collectorJs = built.collector;
   rmSync(stage, { recursive: true, force: true });
-  const codeHash = createHash("sha256").update(collectorJs).digest("hex").slice(0, 16);
+  // Hash BOTH files: a viewer-only change must still produce a new key, or CloudFormation
+  // reports NO_CHANGE and the fix never reaches AWS (the stale-bundle trap).
+  const codeHash = createHash("sha256")
+    .update(built.collector)
+    .update(built.viewer)
+    .digest("hex")
+    .slice(0, 16);
   const lambdaCodeKey = `collector-${codeHash}.zip`;
   // Fixed mtime (HEAD commit time) → byte-identical archive on any machine at the same commit.
   const epoch = Number(process.env.SOURCE_DATE_EPOCH || git(["log", "-1", "--format=%ct"]) || 0);
-  const lambdaZip = deterministicZip([{ name: "collector.js", data: collectorJs }], epoch);
+  const lambdaZip = deterministicZip(
+    [
+      { name: "collector.js", data: built.collector },
+      { name: "viewer.js", data: built.viewer },
+    ],
+    epoch,
+  );
   const lambdaZipBase64 = lambdaZip.toString("base64");
 
   // 3. Emit the module the backend imports. Git-ignored: it is a build output, and

@@ -167,5 +167,15 @@ export function demoApi(nowMs: () => number = Date.now): Api {
       return { cohorts: retention(days) };
     },
     erasePlayer: notLive,
+
+    // The team dashboard is a real deployment's feature: on demo data it reads as
+    // "not set up", and every mutating call refuses like the rest of demo mode.
+    async teamStatus() {
+      return { enabled: false };
+    },
+    enableTeam: notLive,
+    disableTeam: notLive,
+    inviteViewer: notLive,
+    removeViewer: notLive,
   };
 }

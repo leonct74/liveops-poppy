@@ -23,6 +23,26 @@ export interface Api {
   stats(id: string, days: number): Promise<Overview>;
   retention(id: string, days: number): Promise<{ cohorts: RetentionPoint[] }>;
   erasePlayer(id: string, installId: string): Promise<{ playerHash: string; playerRowDeleted: boolean; note: string }>;
+
+  // ── Team dashboard (premium) ─────────────────────────────────────────────────────────
+  teamStatus(): Promise<TeamStatus>;
+  enableTeam(): Promise<{ operation: string }>;
+  disableTeam(): Promise<{ operation: string }>;
+  inviteViewer(email: string): Promise<{ email: string; status: string }>;
+  removeViewer(email: string): Promise<{ ok: true }>;
+}
+
+export interface TeamViewer {
+  email: string;
+  status: "invited" | "active" | "disabled" | "unknown";
+  createdAt?: string;
+}
+
+export interface TeamStatus {
+  enabled: boolean;
+  dashboardUrl?: string;
+  userPoolId?: string;
+  viewers?: TeamViewer[];
 }
 
 export const api: Api = {
@@ -50,4 +70,12 @@ export const api: Api = {
     host.invokeBackend({ method: "GET", path: `/titles/${t(id)}/retention?days=${days}` }),
   erasePlayer: (id, installId) =>
     host.invokeBackend({ method: "POST", path: `/titles/${t(id)}/erase-player`, body: { installId } }),
+
+  teamStatus: () => host.invokeBackend({ method: "GET", path: "/team" }),
+  // Both of these redeploy the stack, which takes minutes — same budget as /deploy.
+  enableTeam: () => host.invokeBackend({ method: "POST", path: "/team/enable" }, 5 * 60_000),
+  disableTeam: () => host.invokeBackend({ method: "POST", path: "/team/disable" }, 5 * 60_000),
+  inviteViewer: (email) => host.invokeBackend({ method: "POST", path: "/team/viewers", body: { email } }),
+  removeViewer: (email) =>
+    host.invokeBackend({ method: "DELETE", path: `/team/viewers/${encodeURIComponent(email)}` }),
 };

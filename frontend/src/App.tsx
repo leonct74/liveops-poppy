@@ -13,16 +13,18 @@ import { ConfigEditor } from "./ConfigEditor";
 import { Deployment } from "./Deployment";
 import { Sdk } from "./Sdk";
 import { Titles } from "./Titles";
+import { Team } from "./Team";
 import type { DeploymentStatus } from "./types";
 import { Feedback } from "./Feedback";
 
-type Tab = "dashboard" | "config" | "titles" | "setup" | "feedback";
+type Tab = "dashboard" | "config" | "titles" | "team" | "setup" | "feedback";
 
 // Feedback is LAST in every poppy (AGENTS.md §9a) — same place in all of them.
 const TABS: { id: Tab; label: string }[] = [
   { id: "dashboard", label: "Dashboard" },
   { id: "config", label: "Remote config" },
   { id: "titles", label: "Titles & SDK" },
+  { id: "team", label: "Team" },
   { id: "setup", label: "Setup" },
   { id: "feedback", label: "Feedback" },
 ];
@@ -183,6 +185,20 @@ export function App({ apiImpl, statusPollMs = 10_000 }: { apiImpl?: Api; statusP
           {titleId && <Sdk endpoint={status?.collectorUrl} titleId={titleId} />}
         </>
       )}
+
+      {/* Entitlement is per TITLE, so the Team tab needs one selected before it can ask
+          the host whether this game is paid for. */}
+      {tab === "team" &&
+        (titleId ? (
+          <Team api={active} titleId={titleId} isLive={isLive} />
+        ) : (
+          <div className="card">
+            <div className="section-title">Team dashboard</div>
+            <p className="muted" style={{ marginBottom: 0 }}>
+              Create a title first — the team dashboard is bought and shared per game.
+            </p>
+          </div>
+        ))}
 
       {tab === "setup" && (
         <>

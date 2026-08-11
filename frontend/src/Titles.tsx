@@ -1,7 +1,7 @@
 // Titles: the studio's games. Creating one hands back a key that is shown EXACTLY ONCE —
 // the UI has to make that unmissable, because the only recovery is a rotation.
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "./Button";
 import { CopyButton } from "./CopyButton";
 import type { Api } from "./api";
@@ -43,6 +43,19 @@ export function Titles({
   return (
     <div className="card">
       <div className="section-title">Titles</div>
+
+      {/* The key reveal sits at the TOP, before the list. It used to render below the
+          create form — off the bottom of the card, while the eye followed the new title
+          appearing in the list above — so the founder's first run missed it entirely and
+          copied the id instead (2026-08-11). It is the one value that can never be shown
+          again, so it goes where it cannot be scrolled past. */}
+      {created && (
+        <OneTimeKey
+          title={`Title key for ${created.title.name}`}
+          value={created.key}
+          onDone={() => setCreated(null)}
+        />
+      )}
 
       {titles === null && <div className="skeleton" style={{ height: 16, width: 220, borderRadius: 6 }} />}
 
@@ -164,14 +177,6 @@ export function Titles({
         </div>
       )}
 
-      {created && (
-        <OneTimeKey
-          title={`Title key for ${created.title.name}`}
-          value={created.key}
-          onDone={() => setCreated(null)}
-        />
-      )}
-
       {error && (
         <div className="banner err" style={{ marginTop: 12 }}>
           {error}
@@ -184,8 +189,13 @@ export function Titles({
 /** The key reveal. Loud on purpose: we store only a hash, so this is genuinely the last
  *  time this value exists anywhere outside the developer's own notes and game build. */
 function OneTimeKey({ title, value, onDone }: { title: string; value: string; onDone: () => void }) {
+  const box = useRef<HTMLDivElement>(null);
+  // Bring it into view even if the card is scrolled — the value cannot be recovered.
+  useEffect(() => {
+    box.current?.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
+  }, []);
   return (
-    <div className="keybox" style={{ marginTop: 12 }}>
+    <div className="keybox" ref={box} style={{ marginTop: 12 }}>
       <strong>{title}</strong>
       <code>{value}</code>
       <div className="row">
@@ -195,8 +205,10 @@ function OneTimeKey({ title, value, onDone }: { title: string; value: string; on
         </button>
       </div>
       <p className="muted" style={{ fontSize: 12, marginBottom: 0, marginTop: 8 }}>
-        Copy it now — LiveOpsPoppy stores only a hash of this key and can never show it again.
-        If you lose it, rotate the key.
+        <strong>This is the only time this key is shown.</strong> Copy it now and keep it with
+        your game&apos;s source — LiveOpsPoppy stores only a hash and can never show it again.
+        It is not the title id: your game needs <em>both</em>. Lost it? Use <em>Rotate key</em> on
+        the title below to get a fresh one.
       </p>
     </div>
   );

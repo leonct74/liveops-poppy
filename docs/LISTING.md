@@ -45,26 +45,18 @@ Everything the submission form asks for, ready to paste. Prepared 2026-08-11; th
 - **bugsUrl:** `https://github.com/leonct74/liveops-poppy/issues` — **currently
   PRIVATE; see gate 3.**
 
-## ⚠️ License — needs a founder call before submission
+## License — RESOLVED (founder decision 2026-08-11)
 
-LiveOpsPoppy is **PolyForm Shield 1.0.0** (non-compete), like every first-party
-poppy. But the dev hub's own licensing policy (dev-hub P5, /developers/licensing)
-**rejects non-compete licenses** for store submissions — the allowlist is
-MIT/Apache/BSD (encouraged) + MPL/LGPL/GPL/AGPL (accepted), with `Other: …`
-routed to manual review.
-
-Two consistent ways through, pick one:
-
-1. **Seed it as a first-party curated entry** (how the existing five poppies are
-   listed) rather than pushing it through the public submission form — and add one
-   sentence to /developers/licensing stating plainly that first-party poppies are
-   source-available under PolyForm Shield (the audit affordance is identical; the
-   noncompete protects the platform's own products). Honest, and closes the gap
-   before a third-party developer points at it.
-2. Submit via the form as `Other: PolyForm Shield 1.0.0` and approve it in manual
-   review — works mechanically, but leaves the policy contradiction unstated.
-
-Option 1 is recommended: same outcome, and the policy page stops being wrong.
+**License: `PolyForm-Shield-1.0.0`, straight from the accepted list.** The store
+policy was changed the same day this pack was written: source-available noncompete
+licenses (PolyForm Shield/Perimeter, FSL-1.1) are now an accepted tier for
+*everyone* — the boundary is user rights (read, audit, build, run, patch your own
+install, commercial use — all of which Shield grants), not developer-vs-developer
+code reuse. A noncompete never stops anyone building a similar poppy from scratch;
+it only stops them building it out of this code, which the originality rule forbids
+anyway. Same rules for first-party and third-party — /developers/licensing says so
+explicitly. (Policy commit in agentspoppy-web, 2026-08-11; ships with the held web
+deploy.)
 
 ## Gates before Submit (in order)
 

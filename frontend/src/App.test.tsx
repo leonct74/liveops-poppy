@@ -66,6 +66,43 @@ describe("App", () => {
     expect(screen.queryByRole("button", { name: "Rotate key" })).not.toBeInTheDocument();
   });
 
+  /**
+   * The app must flip demo → live BY ITSELF when the stack completes. The Setup panel
+   * only polls while mounted, so a user who starts a deploy and browses other tabs
+   * (what a two-minute wait invites) previously stayed on "demo data" forever — the
+   * founder's first real run hit exactly this (2026-08-11).
+   */
+  it("flips from demo to live on its own once the stack becomes ready", async () => {
+    let calls = 0;
+    const api = liveApi({
+      status: vi.fn(async () => {
+        calls++;
+        const ready = calls > 1;
+        return {
+          phase: ready ? ("ready" as const) : ("deploying" as const),
+          stackName: "LiveOpsPoppyStack",
+          region: "eu-west-1",
+          inProgress: !ready,
+          currentTemplateKey: "template-x",
+          currentRevision: 1,
+          deployedRevision: ready ? 1 : undefined,
+          updateAvailable: false,
+          appOutdated: false,
+          ...(ready ? { collectorUrl: "https://abc123.lambda-url.eu-west-1.on.aws/" } : {}),
+        };
+      }),
+    });
+    render(<App apiImpl={api} statusPollMs={25} />);
+
+    // First probe: still building — the app honestly shows demo data.
+    expect(await screen.findByText(/You're looking at demo data/)).toBeInTheDocument();
+
+    // A later self-initiated probe hears "ready" — no tab visit, no restart.
+    await waitFor(() => expect(screen.queryByText(/You're looking at demo data/)).not.toBeInTheDocument(), {
+      timeout: 3000,
+    });
+  });
+
   it("lands on the tab named by ?screen= (how listing screenshots are captured), else dashboard", async () => {
     window.history.replaceState(null, "", "/?screen=config");
     try {

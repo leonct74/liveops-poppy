@@ -41,7 +41,7 @@ function initialTab(): Tab {
   }
 }
 
-export function App({ apiImpl }: { apiImpl?: Api } = {}) {
+export function App({ apiImpl, statusPollMs = 10_000 }: { apiImpl?: Api; statusPollMs?: number } = {}) {
   const live = apiImpl ?? liveApi;
   const [status, setStatus] = useState<DeploymentStatus | null>(null);
   const [tab, setTab] = useState<Tab>(initialTab);
@@ -56,21 +56,33 @@ export function App({ apiImpl }: { apiImpl?: Api } = {}) {
   // The shell asks for status ITSELF rather than waiting for the Setup tab's panel to
   // report in: otherwise someone with a live deployment opens the app, sees "demo data",
   // and has to find the Setup tab before the app admits their backend exists.
+  //
+  // And it KEEPS asking until the answer is "ready": the Setup panel only polls while
+  // mounted, so someone who starts a deploy and then browses the other tabs (which is
+  // what a two-minute wait invites) would otherwise stay on "demo data" forever — the
+  // stack completes and nothing in the app ever hears it (founder field report,
+  // 2026-08-11). Once live, the polling stops; Setup's own panel covers the rest.
   useEffect(() => {
     let cancelled = false;
-    void (async () => {
+    let timer: number | undefined;
+    const probe = async () => {
       try {
         const s = await live.status();
-        if (!cancelled) setStatus(s);
+        if (cancelled) return;
+        setStatus(s);
+        if (s.phase === "ready") return; // live now — stop asking
       } catch {
         // No connection yet, or the backend isn't reachable — demo mode is the honest
         // fallback, and the Setup tab surfaces the actual error.
       }
-    })();
+      if (!cancelled) timer = window.setTimeout(() => void probe(), statusPollMs);
+    };
+    void probe();
     return () => {
       cancelled = true;
+      window.clearTimeout(timer);
     };
-  }, [live]);
+  }, [live, statusPollMs]);
 
   useEffect(() => {
     // Switching between demo and live changes which titles exist.

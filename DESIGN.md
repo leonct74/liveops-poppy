@@ -210,9 +210,40 @@ reading the matrix.
 
 ## 10. Pricing & competition (the page-6 story)
 
-**Subscription per studio, ~$79/yr** through the AgentsPoppy checkout (5% platform fee;
-founder to confirm unit + price — §12). Never per-MAU, never per-event; that inversion *is*
-the marketing. The retired "pay once" framing stays retired.
+**DECIDED (founder, 2026-08-11): free core + ONE premium — the Team dashboard —
+at $14.99/yr per title, unlimited team members.** Never per-MAU, never per-event; that
+inversion *is* the marketing. The retired "pay once" framing stays retired.
+
+**Free forever:** deploy, collect, remote config, the SDK, the daily-cap bill guard, the
+admin's own dashboard in the desktop app, teardown. Everything a solo developer needs. This
+follows TrafficPoppy §12: charging for the basics would betray the BYO-cloud story, and in a
+source-available product a paywall on something the customer could trivially self-host reads
+as an insult they can read the source code of.
+
+**Premium = the Team dashboard** (the analogue of TrafficPoppy's True Reach, and the same
+machinery): a **Cognito user pool + a read-only web dashboard in the studio's own account**,
+so the producer, designer, marketer or investor sees the numbers **in a browser, with no
+AgentsPoppy install and no AWS access**. Today the stats are trapped in one engineer's
+desktop app — for a *team* customer that is the real limitation, and it is emphatically not
+a weekend project (viewer invites, EMAIL_ONLY reset, revocation, server-side read-only scope
+enforced from the verified JWT, tenant isolation). MailPoppy proved the Cognito machinery;
+TrafficPoppy specced the viewer plane. Reuse both.
+
+**Why per TITLE and not per studio.** House rule is *per domain, never per seat*: MailPoppy
+sells a domain with unlimited mailboxes, TrafficPoppy a domain with unlimited viewers. A
+studio's analogue is one **game**, with unlimited team members reading it. It also reconciles
+the two earlier intuitions: a solo dev with one game pays $14.99 (impulse-priced), a
+five-game studio pays $75 — essentially the ~$79 the per-studio reasoning arrived at. Price
+lives in the platform product, never as a code constant.
+
+**Why a studio pays at all** (the objection to answer in the listing, founder 2026-08-11):
+not for the collector code — that part *is* a weekend, and it is free here. They pay because
+the incumbents charge **per player** (Microsoft is paying for PlayFab's servers, so their
+price must track usage) while we host nothing and charge flat. Same job, infrastructure toll
+removed. **Do NOT build the pitch on "our updates overwrite your forked Lambda"** — true
+(the code is a CFN parameter) but nobody subscribes to avoid losing updates to code they
+deliberately forked. The honest retention is that maintaining a fork costs more than
+$14.99/yr, forever.
 
 Cost math shown in-app and in the listing (worst-case honest): 10k DAU × ~50 events/day
 = 15M events/mo, batched ≤25 ⇒ ~600k Lambda requests (inside free tier), ~2–4M DynamoDB
@@ -243,8 +274,9 @@ writes ⇒ **roughly $3–6/mo of AWS at 10k DAU; pennies for a small title; ~$0
    term game developers themselves use — clearer *to the target audience* than a generic
    "game" name, even though outsiders won't parse it. (The earlier "games-only ⇒ 'game' in
    the name" criterion was superseded by this audience-clarity argument.)
-2. **Pricing unit**: per-studio unlimited (~$79–99/yr) vs per-title (~$49/yr)? Recommend
-   per-studio — simpler, and "unlimited titles" rhymes with MailPoppy's "unlimited mailboxes."
+2. ~~**Pricing unit**~~ — **CLOSED (founder, 2026-08-11): $14.99/yr per title, unlimited
+   team members, gating the Team dashboard only. See §10.** ("unlimited titles" was the wrong
+   rhyme: the seat-like thing to leave unlimited is the *team*, not the games.)
 3. **Godot snippet in v1?** Cheap, and the Godot crowd is the most ownership-aligned audience.
 4. **Raw S3 archive**: default OFF (recommended) — confirm.
 5. **Alert webhooks (Discord/Slack) in v1** or v1.1?

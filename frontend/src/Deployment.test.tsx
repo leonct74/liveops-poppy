@@ -35,6 +35,30 @@ describe("Deployment", () => {
     await waitFor(() => expect(api.deploy).toHaveBeenCalled());
   });
 
+  /**
+   * While CloudFormation works, the panel must visibly MOVE — a static dot for two
+   * minutes reads as a dead app (founder field report, 2026-08-11): a spinner plus a
+   * live progress line naming the real stack status.
+   */
+  it("shows a spinner and live progress while the stack is building", async () => {
+    render(
+      <Deployment
+        api={apiWith({ phase: "deploying", inProgress: true, stackStatus: "CREATE_IN_PROGRESS" })}
+      />,
+    );
+    expect(await screen.findByLabelText("working")).toBeInTheDocument();
+    expect(screen.getByText(/CloudFormation is building your stack/)).toBeInTheDocument();
+    expect(screen.getByText(/CREATE_IN_PROGRESS/)).toBeInTheDocument();
+    expect(screen.getByText(/refreshes itself/)).toBeInTheDocument();
+  });
+
+  it("shows no spinner when nothing is in progress", async () => {
+    render(<Deployment api={apiWith({ phase: "ready", collectorUrl: "https://x.lambda-url.eu-west-1.on.aws/" })} />);
+    await screen.findByText("Running");
+    expect(screen.queryByLabelText("working")).not.toBeInTheDocument();
+    expect(screen.queryByText(/CloudFormation is/)).not.toBeInTheDocument();
+  });
+
   it("shows the endpoint the games talk to once ready", async () => {
     render(<Deployment api={apiWith({ phase: "ready", collectorUrl: "https://x.lambda-url.aws/" })} />);
     expect(await screen.findByText("https://x.lambda-url.aws/")).toBeInTheDocument();

@@ -72,10 +72,21 @@ export function Deployment({ api, onChange }: { api: Api; onChange?: (s: Deploym
           <div className="section-title">Your AWS account</div>
           <div className="row">
             <span className={badgeClass}>
-              <span className="dot" /> {PHASE_LABEL[status.phase]}
+              {/* While CloudFormation works (~2 min) the ONLY feedback is this badge — a
+                  static dot reads as a dead app (founder field report, 2026-08-11). The
+                  design kit's spinner shows motion; the line below shows real progress. */}
+              {status.inProgress ? <span className="spinner" aria-label="working" /> : <span className="dot" />}{" "}
+              {PHASE_LABEL[status.phase]}
             </span>
             <span className="muted">{status.region}</span>
           </div>
+          {status.inProgress && (
+            <p className="muted" style={{ marginTop: 8, marginBottom: 0 }}>
+              CloudFormation is {status.phase === "removing" ? "removing" : "building"} your stack
+              {status.stackStatus ? ` (${status.stackStatus})` : ""} — usually about two minutes.
+              This panel refreshes itself every few seconds.
+            </p>
+          )}
         </div>
         <div className="row">
           {status.phase === "none" && (

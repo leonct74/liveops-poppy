@@ -2,13 +2,13 @@
   "id": "com.liveopspoppy.desktop",
   "name": "LiveOpsPoppy",
   "version": "0.1.0",
-  "description": "Your game's LiveOps backend in your own AWS — change balance, prices and features live without an app-store review, and see players, sessions and retention on a dashboard nobody else can read. No per-player fees, ever.",
+  "description": "Your game's LiveOps backend in your own AWS \u2014 change balance, prices and features live without an app-store review, and see players, sessions and retention on a dashboard nobody else can read. No per-player fees, ever.",
   "icon": "frontend/liveopspoppy-icon.png",
   "bugsUrl": "https://github.com/leonct74/liveops-poppy/issues",
   "permissionSet": {
     "id": "liveopspoppy-backend",
     "name": "LiveOpsPoppy backend",
-    "description": "Deploys and removes its own CloudFormation stack (named LiveOpsPoppyStack): one DynamoDB table, one collector Lambda behind a public URL, and a least-privilege execution role for that Lambda. Every change and delete is limited to resources named LiveOpsPoppy* (and a liveopspoppy-deploy-* code bucket) — it cannot touch anything else in your account. It creates one narrowly-scoped IAM role for its own Lambda; no account or organisation access. It also reads AWS's public price list (free, read-only, no data of yours involved) so the cost figures on the dashboard are AWS's real prices for your region rather than numbers baked into the app.",
+    "description": "Deploys and removes its own CloudFormation stack (named LiveOpsPoppyStack): one DynamoDB table, one collector Lambda behind a public URL, and a least-privilege execution role for that Lambda. Every change and delete is limited to resources named LiveOpsPoppy* (and a liveopspoppy-deploy-* code bucket) \u2014 it cannot touch anything else in your account. It creates one narrowly-scoped IAM role for its own Lambda; no account or organisation access. It also reads AWS's public price list (free, read-only, no data of yours involved) so the cost figures on the dashboard are AWS's real prices for your region rather than numbers baked into the app.",
     "requiredTags": [
       "agentspoppy:account",
       "agentspoppy:app",
@@ -128,7 +128,8 @@
   "backend": {
     "entry": "backend/index.cjs",
     "transport": "http",
-    "runtime": "node22"
+    "runtime": "node22",
+    "isolation": "strict"
   },
   "teardown": {
     "endpoint": "/teardown"

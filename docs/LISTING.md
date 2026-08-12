@@ -60,6 +60,38 @@ anyway. Same rules for first-party and third-party — /developers/licensing say
 explicitly. (Policy commit in agentspoppy-web, 2026-08-11; ships with the held web
 deploy.)
 
+## 0.2.0 (2026-08-12) — the packaged version, and a permission fix
+
+The 0.1.0 zip was **stale**: packed before T1–T4, so it carried none of the Team plane.
+Repacked as **0.2.0** (Team tab is a new paid capability, so a minor bump, not a re-cut).
+
+Repacking surfaced a real defect in the T1 manifest, now fixed by copying TrafficPoppy:
+the Cognito grant was a single `arn:aws:cognito-idp:*:*:userpool/*` statement covering
+`DeleteUserPool` / `AdminDeleteUser` / `ListUsers`. A pool ARN's id segment is generated
+by AWS, so that wildcard reaches **every user pool in the account** — another poppy's
+mailbox pool included — while the consent text claimed nothing outside `LiveOpsPoppy*`
+was reachable. Neither the risk assessor (any scope that isn't literally `"*"` reads as
+"named") nor the manifest validator flags it.
+
+Now split exactly as TrafficPoppy does:
+
+- `userpool/*` — Create/Describe + Tag/UntagResource only (nothing that reads a user or
+  destroys a pool). `TagResource` is required because CloudFormation tags a pool in a
+  separate call after creating it (CrewPoppy's live rollback, 2026-07-30).
+- `tagged-as-self` — every Delete/Update/Admin/List action, so IAM confines them to pools
+  carrying LiveOpsPoppy's own tag.
+
+That only holds if the pool is **born tagged**, so `ViewerPool` now sets `UserPoolTags`
+from new `AttrAccountId`/`AttrConnectionId` stack parameters (stack-tag propagation alone
+is not enough — TrafficPoppy P5 caught CFN's ACM handler dropping tags on create).
+`TEMPLATE_REVISION` 2 → 3. Locked by tests: `manifest.test.ts` (5) fails if any
+destructive Cognito action escapes the tag scope, and `template.test.ts` fails if the
+pool loses its birth tags. 247 tests green.
+
+**Still unproven:** that Cognito actually honours `aws:ResourceTag` for these actions.
+Deploy with the Team dashboard ON during gate 1 and confirm invite/list/delete-viewer
+work — if Cognito ignores the tag condition, they will 403.
+
 ## Status 2026-08-11: SEEDED (held)
 
 The catalogue entry is written and verified — `catalog-seed.json` in agentspoppy-web
@@ -79,8 +111,12 @@ screenshots, and the listing becomes installable.
    `pricing:GetProducts` live path has NEVER answered — both local profiles 403);
    flood mode to prove the 429 cap; then **teardown and verify the account is
    clean**. Use a spare account/region per the working agreements.
-2. **Publish the zip on a PUBLIC host** (`release/com.liveopspoppy.desktop-0.1.0-any.zip`,
-   sha256 `dfb8bc6a…`): flip this repo public, or publish on a public releases repo
+   **Deploy with the Team dashboard ON for at least one pass** — the viewer pool has
+   never been created live, and it is what proves the tag-scoped Cognito grant works
+   (invite / list / delete a viewer). Confirm the created pool carries the four
+   `agentspoppy:*` tags; without them every viewer-management call 403s.
+2. **Publish the zip on a PUBLIC host** (`release/com.liveopspoppy.desktop-0.2.0-any.zip`,
+   sha256 `6d72b503…`): flip this repo public, or publish on a public releases repo
    like the MailPoppy mirror. Before touching the catalogue:
    `curl -sIL -o /dev/null -w '%{http_code}\n' <url>` with **no credentials** must
    print 200 — the private-repo 404 trap bit MailPoppy for real on 2026-07-30.

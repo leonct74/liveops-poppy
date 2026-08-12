@@ -47,7 +47,7 @@ export const VIEWER_HANDLER = "viewer.handler";
  * app sees deployed-revision > embedded-revision and must never offer a downgrade
  * (MailPoppy's 2026-07-29 plain-inequality footgun, designed out from day one).
  */
-export const TEMPLATE_REVISION = 2;
+export const TEMPLATE_REVISION = 3;
 
 export interface CfnTemplate {
   AWSTemplateFormatVersion: string;
@@ -85,6 +85,12 @@ export function buildTemplate(): CfnTemplate {
         Default: "no",
         Description: "Create the team viewer plane (Cognito pool + read-only web dashboard).",
       },
+      // The viewer pool is BORN tagged from these rather than relying on stack-tag
+      // propagation, which TrafficPoppy's P5 proved is not universal (CFN's ACM handler
+      // dropped tags on create). A user pool's ARN carries a random id, so its grant can
+      // only ever be tag-scoped — these two are load-bearing, not cosmetic.
+      AttrAccountId: { Type: "String", Description: "agentspoppy:account tag value." },
+      AttrConnectionId: { Type: "String", Description: "agentspoppy:connection tag value." },
     },
     Conditions: {
       TeamEnabled: { "Fn::Equals": [{ Ref: "TeamDashboardEnabled" }, "yes"] },
@@ -265,6 +271,19 @@ export function buildTemplate(): CfnTemplate {
               RequireUppercase: false,
               RequireSymbols: false,
             },
+          },
+          // Born tagged — see the Parameters note. Values match stackTags() exactly, so the
+          // explicit tags and CloudFormation's propagated stack tags can never disagree.
+          // Without these the pool is untaggable at birth, and the manifest's tag-scoped
+          // Cognito grant (the thing that stops us reaching ANY other pool in the account)
+          // would match nothing.
+          UserPoolTags: {
+            "agentspoppy:account": { Ref: "AttrAccountId" },
+            // Literal, not an import: infra is a standalone workspace, and this value must
+            // equal backend/src/tags.ts APP_ID exactly (asserted in the template tests).
+            "agentspoppy:app": "com.liveopspoppy.desktop",
+            "agentspoppy:connection": { Ref: "AttrConnectionId" },
+            "agentspoppy:managed": "liveopspoppy",
           },
         },
       },

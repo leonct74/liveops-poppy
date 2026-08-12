@@ -308,6 +308,11 @@ export async function deploy(
       { ParameterKey: "LambdaCodeBucket", ParameterValue: bucket },
       { ParameterKey: "LambdaCodeKey", ParameterValue: lambdaCodeKey },
       { ParameterKey: "TeamDashboardEnabled", ParameterValue: teamValue },
+      // The viewer pool is born tagged from these rather than relying on stack-tag
+      // propagation (TrafficPoppy's P5 proved it is not universal). A pool's ARN carries a
+      // random id, so its grant can only be tag-scoped: these are load-bearing.
+      { ParameterKey: "AttrAccountId", ParameterValue: attribution.accountId },
+      { ParameterKey: "AttrConnectionId", ParameterValue: attribution.connectionId },
     ],
     Capabilities: CAPABILITIES,
     Tags,

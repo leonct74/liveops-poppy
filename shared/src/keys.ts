@@ -53,6 +53,17 @@ export const skVer = (version: string): string => `ver#${version}`;
 /** The registry row listing every title (so the admin plane never Scans the table). */
 export const TITLES_INDEX_PK = "titles";
 
+/**
+ * 🪤 The DynamoDB attribute every counter's value lives in. ONE definition, imported by the
+ * writer (store.ts `ADD #c :n`) and by BOTH readers (backend/stats.ts and the viewer
+ * Lambda) — because the viewer once read `item.n` while the store wrote `count`: every
+ * query succeeded, every row came back, and every number parsed as 0. The team dashboard
+ * shipped showing zeros for a game with data, its unit tests green because the fixtures
+ * seeded the same wrong attribute the reader expected (founder, 2026-08-14). A name that
+ * exists in one place cannot drift.
+ */
+export const COUNTER_ATTR = "count";
+
 // ── Time ───────────────────────────────────────────────────────────────────────────────
 
 /** UTC day bucket. Callers pass the time explicitly — never let a data-affecting value

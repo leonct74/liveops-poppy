@@ -6,6 +6,7 @@
 
 import { QueryCommand, type AttributeValue } from "@aws-sdk/client-dynamodb";
 import {
+  COUNTER_ATTR,
   cohortPk,
   dayPk,
   lastDays,
@@ -131,7 +132,7 @@ export class StatsReader {
       let total = 0;
       for (const item of items) {
         const sk = item.sk?.S ?? "";
-        const count = num(item.count);
+        const count = num(item[COUNTER_ATTR]);
         if (sk === SK_DAU) dau = count;
         else if (sk === SK_SESS_COUNT) sessions = count;
         else if (sk === SK_SESS_SECONDS) sessionSeconds = count;

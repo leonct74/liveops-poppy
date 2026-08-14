@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createSign, generateKeyPairSync } from "node:crypto";
 import { makeViewerHandler, type UrlEvent } from "./viewer";
 import { issuerFor, type JwkKey } from "./jwt";
-import { SK_COHORT_SIZE, SK_DAU, SK_SESS_COUNT, SK_SESS_SECONDS, TITLES_INDEX_PK, cohortPk, dayPk } from "../../shared/src/keys";
+import { COUNTER_ATTR, SK_COHORT_SIZE, SK_DAU, SK_SESS_COUNT, SK_SESS_SECONDS, TITLES_INDEX_PK, cohortPk, dayPk } from "../../shared/src/keys";
 
 const ISSUER = issuerFor("eu-west-1", "eu-west-1_POOL");
 const CLIENT = "client-1";
@@ -36,17 +36,17 @@ function deps(over: Partial<Parameters<typeof makeViewerHandler>[0]> = {}) {
   const data: Record<string, Record<string, any>[]> = {
     [TITLES_INDEX_PK]: [{ sk: S("title#game1"), name: S("Sunken Keep") }],
     [dayPk("game1", today)]: [
-      { sk: S(SK_DAU), n: N(120) },
-      { sk: S(SK_SESS_COUNT), n: N(200) },
-      { sk: S(SK_SESS_SECONDS), n: N(60_000) },
-      { sk: S("event#level_complete"), n: N(900) },
-      { sk: S("plat#web"), n: N(120) },
+      { sk: S(SK_DAU), [COUNTER_ATTR]: N(120) },
+      { sk: S(SK_SESS_COUNT), [COUNTER_ATTR]: N(200) },
+      { sk: S(SK_SESS_SECONDS), [COUNTER_ATTR]: N(60_000) },
+      { sk: S("event#level_complete"), [COUNTER_ATTR]: N(900) },
+      { sk: S("plat#web"), [COUNTER_ATTR]: N(120) },
     ],
     // A cohort from 8 days ago: old enough for d1 and d7, not d30.
     [cohortPk("game1", new Date(NOW - 8 * 86_400_000).toISOString().slice(0, 10))]: [
-      { sk: S(SK_COHORT_SIZE), n: N(100) },
-      { sk: S("d1"), n: N(40) },
-      { sk: S("d7"), n: N(20) },
+      { sk: S(SK_COHORT_SIZE), [COUNTER_ATTR]: N(100) },
+      { sk: S("d1"), [COUNTER_ATTR]: N(40) },
+      { sk: S("d7"), [COUNTER_ATTR]: N(20) },
     ],
   };
   return {
@@ -67,6 +67,13 @@ const get = (path: string, headers: Record<string, string> = {}, query?: Record<
 });
 
 describe("viewer handler", () => {
+  it("pins the counter attribute to the name deployed tables already hold", () => {
+    // Every live table has counters stored under this attribute. The shared constant stops
+    // writer and readers drifting from each other; THIS pins the value itself — rename it
+    // and every deployed stack's history reads as zeros while the whole suite stays green.
+    expect(COUNTER_ATTR).toBe("count");
+  });
+
   it("serves the dashboard page unauthenticated — it holds no data, only the login form", async () => {
     const res = await makeViewerHandler(deps())(get("/"));
     expect(res.statusCode).toBe(200);

@@ -11,6 +11,7 @@ import {
   type AttributeValue,
 } from "@aws-sdk/client-dynamodb";
 import {
+  COUNTER_ATTR,
   cfgPk,
   cfgVersionSk,
   cohortPk,
@@ -99,12 +100,12 @@ export function makeStore(client: DynamoLike, tableName: string, nowMs: () => nu
         TableName: tableName,
         Key: { pk: s(pk), sk: s(sk) },
         UpdateExpression: "ADD #c :n",
-        ExpressionAttributeNames: { "#c": "count" },
+        ExpressionAttributeNames: { "#c": COUNTER_ATTR },
         ExpressionAttributeValues: { ":n": n(by) },
         ReturnValues: "UPDATED_NEW",
       }),
     );
-    return readN(out.Attributes?.count, 0);
+    return readN(out.Attributes?.[COUNTER_ATTR], 0);
   }
 
   return {

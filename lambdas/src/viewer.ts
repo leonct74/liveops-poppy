@@ -16,6 +16,7 @@
 
 import { DynamoDBClient, QueryCommand, type AttributeValue } from "@aws-sdk/client-dynamodb";
 import {
+  COUNTER_ATTR,
   SK_COHORT_SIZE,
   SK_DAU,
   SK_SESS_COUNT,
@@ -124,7 +125,7 @@ export function makeViewerHandler(deps: ViewerDeps) {
       let dayEvents = 0;
       for (const item of partitions[i] ?? []) {
         const sk = str(item.sk);
-        const n = num(item.n);
+        const n = num(item[COUNTER_ATTR]);
         if (sk === SK_DAU) dau = n;
         else if (sk === SK_SESS_COUNT) sessions = n;
         else if (sk === SK_SESS_SECONDS) sessionSeconds = n;
@@ -158,7 +159,7 @@ export function makeViewerHandler(deps: ViewerDeps) {
     const ageOf = (day: string) => Math.round((deps.now() - Date.parse(`${day}T00:00:00Z`)) / 86_400_000);
     cohortDays.forEach((day, i) => {
       const items = rows[i] ?? [];
-      const size = num(items.find((it) => str(it.sk) === SK_COHORT_SIZE)?.n);
+      const size = num(items.find((it) => str(it.sk) === SK_COHORT_SIZE)?.[COUNTER_ATTR]);
       if (!size) return;
       const age = ageOf(day);
       for (const [bucket, minAge] of [
@@ -170,7 +171,7 @@ export function makeViewerHandler(deps: ViewerDeps) {
         // zero — the same honesty rule the desktop dashboard follows.
         if (age < minAge) continue;
         buckets[bucket]!.size += size;
-        buckets[bucket]!.returned += num(items.find((it) => str(it.sk) === bucket)?.n);
+        buckets[bucket]!.returned += num(items.find((it) => str(it.sk) === bucket)?.[COUNTER_ATTR]);
       }
     });
     const pct = (b: { returned: number; size: number }) =>

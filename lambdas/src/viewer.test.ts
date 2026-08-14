@@ -124,10 +124,14 @@ describe("viewer handler", () => {
     expect(body.days).toBeUndefined();
   });
 
-  it("ships a favicon inline and refuses to be framed", async () => {
+  it("ships a favicon inline, PERMITS it in the CSP, and refuses to be framed", async () => {
     const res = await makeViewerHandler(deps())(get("/"));
     // One Lambda route serves this page, so a /favicon.ico link would 404 every visit.
     expect(res.body).toContain('rel="icon" href="data:image/png;base64,');
+    // 🪤 The tag alone is not enough: default-src 'none' with no img-src blocks data:
+    // images, so the favicon shipped in 0.2.2 was silently vetoed by our own header —
+    // only a real browser's console showed it. The CSP must explicitly allow it.
+    expect(res.headers["content-security-policy"]).toContain("img-src data:");
     // A sign-in form must never be frameable.
     expect(res.headers["x-frame-options"]).toBe("DENY");
   });

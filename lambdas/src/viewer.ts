@@ -216,8 +216,12 @@ export function makeViewerHandler(deps: ViewerDeps) {
           // browsers only) and no unit test covered the header, so sign-in shipped broken in
           // EVERY browser (founder, 2026-08-14). The exact origin is also tighter than the
           // wildcard ever intended to be.
+          //
+          // img-src data: exists for the inline favicon: with default-src 'none' and no
+          // img-src, the browser blocks data: images too — the favicon added in 0.2.2 was
+          // silently vetoed by this very header until a real-browser test caught it.
           "content-security-policy":
-            `default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self' ${cognitoOrigin(deps.issuer)}`,
+            `default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self' ${cognitoOrigin(deps.issuer)}`,
           // Never let this page be framed: it carries a sign-in form and a sign-out
           // control, both worth clickjacking. TrafficPoppy's dashboard already sets this;
           // this one had been missing it.

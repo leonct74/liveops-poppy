@@ -79,6 +79,7 @@ export const VIEWER_HTML = `<!doctype html>
           <option value="30" selected>30 days</option>
           <option value="90">90 days</option>
         </select>
+        <button id="dl" disabled title="Download these numbers as a CSV file that opens in Excel">Download CSV</button>
         <button id="out" style="background:transparent;color:var(--muted);border:1px solid var(--line)">Sign out</button>
       </div>
     </div>
@@ -180,6 +181,8 @@ function rows(table, list) {
 }
 
 function load() {
+  lastStats = null;
+  $("dl").disabled = true;
   var q = "?days=" + $("days").value + (($("title").value) ? "&title=" + encodeURIComponent($("title").value) : "");
   fetch("api/stats" + q, { headers: { authorization: "Bearer " + idToken } })
     .then(function (r) {
@@ -225,12 +228,77 @@ function load() {
       $("r-d30").textContent = r.d30 == null ? "—" : r.d30 + "%";
       rows($("events"), d.events || []);
       rows($("platforms"), d.platforms || []);
+      lastStats = d;
+      $("dl").disabled = false;
     })
     .catch(function () { /* transient — the next poll or interaction retries */ });
 }
 
+// ── CSV export ─────────────────────────────────────────────────────────────────────────
+// Built CLIENT-SIDE from the numbers already on screen: no new server route, no second
+// authorisation path, and the file always matches exactly what the viewer is looking at.
+// CSV rather than .xlsx on purpose — Excel opens CSV natively, and a real spreadsheet
+// writer would drag a library into a page whose whole design is "every byte auditable".
+var lastStats = null;
+
+function csvEsc(v) {
+  var s = String(v == null ? "" : v);
+  return /[",\\r\\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+
+function buildCsv(d) {
+  var lines = [];
+  var push = function (cells) { lines.push(cells.map(csvEsc).join(",")); };
+  var title = (d.titles || []).filter(function (t) { return t.titleId === d.titleId; })[0];
+
+  push(["Game", title ? title.name : d.titleId]);
+  push(["Exported (UTC)", new Date().toISOString()]);
+  lines.push("");
+
+  push(["Day", "Players", "Sessions", "Session seconds", "Events"]);
+  (d.days || []).forEach(function (x) {
+    push([x.day, x.dau, x.sessions, x.sessionSeconds, x.events]);
+  });
+  lines.push("");
+
+  push(["Event", "Count (whole period)"]);
+  (d.events || []).forEach(function (x) { push([x.name, x.count]); });
+  lines.push("");
+
+  push(["Platform", "Sessions (whole period)"]);
+  (d.platforms || []).forEach(function (x) { push([x.name, x.count]); });
+  lines.push("");
+
+  var r = d.retention || {};
+  push(["Retention", "Percent"]);
+  push(["D1", r.d1 == null ? "" : r.d1]);
+  push(["D7", r.d7 == null ? "" : r.d7]);
+  push(["D30", r.d30 == null ? "" : r.d30]);
+
+  // CRLF + a UTF-8 BOM: the combination Excel imports without a wizard.
+  return "\\ufeff" + lines.join("\\r\\n") + "\\r\\n";
+}
+
+function downloadCsv() {
+  if (!lastStats) return;
+  var days = lastStats.days || [];
+  var name = (lastStats.titleId || "game") + "-" +
+    (days.length ? days[0].day + "-to-" + days[days.length - 1].day : "stats") + ".csv";
+  var blob = new Blob([buildCsv(lastStats)], { type: "text/csv;charset=utf-8" });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+}
+
 function signOut(msg) {
   idToken = null; session = null;
+  lastStats = null;
+  $("dl").disabled = true;
   $("app").style.display = "none";
   $("login").style.display = "block";
   $("pw").value = "";
@@ -241,6 +309,7 @@ $("go").addEventListener("click", signIn);
 $("pw").addEventListener("keydown", function (e) { if (e.key === "Enter") signIn(); });
 $("title").addEventListener("change", load);
 $("days").addEventListener("change", load);
+$("dl").addEventListener("click", downloadCsv);
 $("out").addEventListener("click", function () { signOut(""); });
 
 fetch("api/config").then(function (r) { return r.json(); }).then(function (c) { cognito = c; })

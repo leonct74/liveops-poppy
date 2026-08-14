@@ -96,6 +96,14 @@ describe("viewer handler", () => {
     expect(csp).toContain("default-src 'none'");
   });
 
+  it("ships a favicon inline and refuses to be framed", async () => {
+    const res = await makeViewerHandler(deps())(get("/"));
+    // One Lambda route serves this page, so a /favicon.ico link would 404 every visit.
+    expect(res.body).toContain('rel="icon" href="data:image/png;base64,');
+    // A sign-in form must never be frameable.
+    expect(res.headers["x-frame-options"]).toBe("DENY");
+  });
+
   it("REFUSES stats without a token", async () => {
     const res = await makeViewerHandler(deps())(get("/api/stats"));
     expect(res.statusCode).toBe(401);

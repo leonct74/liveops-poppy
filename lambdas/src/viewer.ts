@@ -205,6 +205,10 @@ export function makeViewerHandler(deps: ViewerDeps) {
           // wildcard ever intended to be.
           "content-security-policy":
             `default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self' ${cognitoOrigin(deps.issuer)}`,
+          // Never let this page be framed: it carries a sign-in form and a sign-out
+          // control, both worth clickjacking. TrafficPoppy's dashboard already sets this;
+          // this one had been missing it.
+          "x-frame-options": "DENY",
           "x-content-type-options": "nosniff",
           "referrer-policy": "no-referrer",
         },

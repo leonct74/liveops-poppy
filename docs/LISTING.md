@@ -104,7 +104,9 @@ screenshots, and the listing becomes installable.
 ## Gates before Submit (in order)
 
 1. **Live deploy verification** (founder AWS approval required — creates real
-   resources): deploy from a dev install, then per IMPLEMENTATION.md §8: run the
+   resources): deploy from a dev install, then (IMPLEMENTATION.md never existed —
+   the steps are here, with the request/response detail in docs/REST.md and the
+   flood procedure in docs/UNITY.md §"You do not need Unity"): run the
    simulator (`scripts/simulate-game.mjs`) against the live collector, see the
    dashboard fill; check the backend log for `price list …` and confirm the
    dashboard does **not** show the built-in-figures fallback notice (the

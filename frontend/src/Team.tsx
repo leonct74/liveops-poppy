@@ -64,6 +64,7 @@ export function Team({
   titleName,
   isLive,
   bridge = host,
+  pollMs = 3000,
 }: {
   api: Api;
   titleId: string;
@@ -71,6 +72,8 @@ export function Team({
   isLive: boolean;
   /** Injected so tests drive entitlement without the host. */
   bridge?: Pick<typeof host, "isPurchased" | "purchaseInfo" | "buyProduct" | "manageSubscription">;
+  /** How often to re-read while CloudFormation works. Injected so tests run in ms. */
+  pollMs?: number;
 }) {
   const [owned, setOwned] = useState<boolean | null>(null);
   const [info, setInfo] = useState<PurchaseInfo | null>(null);
@@ -102,10 +105,47 @@ export function Team({
     if (!isLive) return;
     try {
       setStatus(await api.teamStatus());
+      // A good read clears a stale failure. Without this the CloudFormation error from a
+      // double-clicked Set-up button sat on screen indefinitely, over a stack that had
+      // long since finished the very thing the message said it couldn't start.
+      setError(null);
     } catch (e) {
       setError((e as Error).message);
     }
   }, [api, isLive]);
+
+  /**
+   * 🪤 Enabling the viewer plane is a CloudFormation UPDATE that takes ~2 minutes, but
+   * `enableTeam()` returns as soon as AWS ACCEPTS it — long before ViewerUrl exists. This
+   * panel has no poll of its own, so a single read taken the instant that call returned
+   * always landed mid-update, saw no viewer plane, and never looked again: the founder was
+   * shown "no team to set up" by a stack that was at that moment building exactly that,
+   * and only a tab remount revealed it (2026-08-14). So wait for the plane to actually
+   * appear before handing the panel back.
+   *
+   * Reads are ALLOWED TO FAIL here — describing a stack mid-update can throw, and that is
+   * not a reason to give up on a change AWS already accepted; only the deadline is.
+   */
+  const waitForTeam = useCallback(
+    async (want: boolean) => {
+      const deadline = Date.now() + 4 * 60_000;
+      while (Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, pollMs));
+        try {
+          const next = await api.teamStatus();
+          setStatus(next);
+          if (next.enabled === want) {
+            setError(null);
+            return;
+          }
+        } catch {
+          /* transient mid-update read — keep waiting */
+        }
+      }
+      setError("This is taking longer than expected. Check the Setup tab for your stack's status.");
+    },
+    [api, pollMs],
+  );
 
   useEffect(() => {
     void refreshEntitlement();
@@ -212,7 +252,12 @@ export function Team({
             <Button
               className="btn btn-primary"
               busyLabel="Setting it up…"
-              onClick={() => run("enable", () => api.enableTeam())}
+              onClick={() =>
+                run("enable", async () => {
+                  await api.enableTeam();
+                  await waitForTeam(true);
+                })
+              }
             >
               Set up the team dashboard
             </Button>

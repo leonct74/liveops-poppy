@@ -144,6 +144,36 @@ describe("once the title is owned", () => {
     await user.click(await screen.findByRole("button", { name: /set up the team dashboard/i }));
     await waitFor(() => expect(api.enableTeam).toHaveBeenCalled());
   });
+
+  /**
+   * 🪤 enableTeam() returns when AWS ACCEPTS the update, ~2 minutes before ViewerUrl
+   * exists. The panel used to read the status once at that moment, see no viewer plane,
+   * and never look again — the founder got "no team to set up" from a stack that was busy
+   * building precisely that, plus a stale CloudFormation error, until a tab remount
+   * (2026-08-14). It must keep reading until the plane actually appears.
+   */
+  it("keeps checking after setup until the viewer plane actually appears", async () => {
+    let reads = 0;
+    const api = apiOf(
+      { enabled: false },
+      {
+        // Mid-update reads are allowed to THROW: a transient failure must not abandon a
+        // change AWS already accepted.
+        teamStatus: vi.fn(async () => {
+          reads += 1;
+          if (reads === 2) throw new Error("Stack is in UPDATE_IN_PROGRESS state");
+          return reads >= 4 ? ENABLED : { enabled: false };
+        }),
+      },
+    );
+    const user = userEvent.setup();
+    render(<Team api={api} titleId="t1" isLive bridge={owned()} pollMs={5} />);
+    await user.click(await screen.findByRole("button", { name: /set up the team dashboard/i }));
+
+    // The address only renders once the plane is real — this is the whole point.
+    expect(await screen.findByText(ENABLED.dashboardUrl!)).toBeInTheDocument();
+    expect(screen.queryByText(/UPDATE_IN_PROGRESS/)).not.toBeInTheDocument();
+  });
 });
 
 describe("when the dashboard is live", () => {

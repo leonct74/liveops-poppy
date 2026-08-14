@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { Deployment } from "./Deployment";
+import { Deployment, POLL_MS } from "./Deployment";
 import { demoApi } from "./demo";
 import type { Api } from "./api";
 import type { DeploymentStatus } from "./types";
@@ -50,6 +50,42 @@ describe("Deployment", () => {
     expect(screen.getByText(/CloudFormation is building your stack/)).toBeInTheDocument();
     expect(screen.getByText(/CREATE_IN_PROGRESS/)).toBeInTheDocument();
     expect(screen.getByText(/refreshes itself/)).toBeInTheDocument();
+  });
+
+  /**
+   * 🪤 The regression that froze the panel (founder field report, 2026-08-14). Polling was
+   * a setTimeout scheduled from an effect whose deps CANNOT change during a deploy —
+   * inProgress stays true, stackStatus stays "CREATE_IN_PROGRESS", and refresh is stable
+   * because the parent passes `onChange={setStatus}`. React skips an effect with unchanged
+   * deps, so it fired ONCE and never re-armed: the stack reached CREATE_COMPLETE while the
+   * badge still read "Setting up…" and the CSS spinner span over dead state.
+   *
+   * The assertion that matters is `calls` climbing past 2 — a panel that reads once and
+   * gives up is the bug, however pretty it looks while doing it.
+   */
+  it("keeps polling past the first tick until the stack settles", async () => {
+    vi.useFakeTimers();
+    try {
+      let calls = 0;
+      const api = apiWith(
+        {},
+        {
+          status: vi.fn(async () => {
+            calls += 1;
+            return calls >= 4
+              ? { ...base, phase: "ready" as const, inProgress: false, stackStatus: "CREATE_COMPLETE" }
+              : { ...base, phase: "deploying" as const, inProgress: true, stackStatus: "CREATE_IN_PROGRESS" };
+          }),
+        },
+      );
+      render(<Deployment api={api} />);
+      await vi.advanceTimersByTimeAsync(POLL_MS * 6);
+      expect(calls).toBeGreaterThanOrEqual(4);
+      expect(screen.getByText("Running")).toBeInTheDocument();
+      expect(screen.queryByLabelText("working")).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("shows no spinner when nothing is in progress", async () => {

@@ -8,7 +8,8 @@ import { Button } from "./Button";
 import type { Api } from "./api";
 import type { DeploymentStatus } from "./types";
 
-const POLL_MS = 4000;
+/** Exported so the poll regression test paces itself off the real interval. */
+export const POLL_MS = 4000;
 
 const PHASE_LABEL: Record<DeploymentStatus["phase"], string> = {
   none: "Not deployed",
@@ -41,11 +42,32 @@ export function Deployment({ api, onChange }: { api: Api; onChange?: (s: Deploym
   }, [refresh]);
 
   // Poll only while AWS is actually working — an idle poppy makes no calls at all.
+  //
+  // 🪤 The chain RESCHEDULES ITSELF (the same shape as App's status probe) rather than
+  // leaning on this effect re-running. A deploy sits at CREATE_IN_PROGRESS for ~2 minutes,
+  // during which EVERY dep here holds an identical value tick after tick: `inProgress` is
+  // `true`, `stackStatus` is the same string, and `refresh` is stable because the parent
+  // passes `onChange={setStatus}` — a React state setter never changes identity. React
+  // skips an effect whose deps are unchanged, so the re-run this used to depend on is
+  // exactly the thing that never happened: it scheduled ONE timeout, then stopped polling
+  // for good while the CSS spinner kept animating over frozen state. The stack reached
+  // CREATE_COMPLETE and the panel still read "Setting up…" until you remounted the tab
+  // (founder field report, 2026-08-14). Any "spinner never stops" bug starts here.
   useEffect(() => {
-    window.clearTimeout(timer.current);
-    if (status?.inProgress) timer.current = window.setTimeout(() => void refresh(), POLL_MS);
-    return () => window.clearTimeout(timer.current);
-  }, [status?.inProgress, status?.stackStatus, refresh]);
+    if (!status?.inProgress) return;
+    let cancelled = false;
+    const tick = async () => {
+      await refresh();
+      // Re-armed only after the previous read RESOLVES, so a slow describe can never
+      // stack up overlapping polls.
+      if (!cancelled) timer.current = window.setTimeout(() => void tick(), POLL_MS);
+    };
+    timer.current = window.setTimeout(() => void tick(), POLL_MS);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer.current);
+    };
+  }, [status?.inProgress, refresh]);
 
   if (!status) {
     // An error before the FIRST successful read must replace the skeleton, not sit behind

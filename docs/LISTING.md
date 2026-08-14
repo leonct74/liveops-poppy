@@ -29,7 +29,7 @@ Everything the submission form asks for, ready to paste. Prepared 2026-08-11; th
   - Live cost estimate from AWS's own price list — including the honest "$0 so far" state
   - One-click teardown; resource transparency via the host
 
-- **Screenshots** — ✅ two SHIPPED (2026-08-11): captured headlessly from the
+- **Screenshots** — ✅ THREE shipped (3rd added 2026-08-14): captured headlessly from the
   demo-mode frontend (`?screen=<tab>` param added for exactly this; regen with
   Chrome `--headless --screenshot` at 1400×1015 → `cwebp -q 82`), staged in
   agentspoppy-web `public/poppies/liveopspoppy/{1,2}.webp` — dashboard with demo
@@ -37,6 +37,19 @@ Everything the submission form asks for, ready to paste. Prepared 2026-08-11; th
   gate (demo mode can't pose for them honestly):
   1. Deployment card mid-deploy — "Your LiveOps stack, deploying into your own account"
   2. Titles & SDK with the generated C# — "One generated C# file. Drop it into Unity and call Track()"
+
+  **3.webp — the team dashboard (2026-08-14).** Captured from a local RIG, not the
+  frontend's demo mode: this page is served by the viewer Lambda and needs a signed-in
+  Cognito viewer, so the `?screen=` trick does not reach it. The rig runs the REAL handler
+  (`lambdas/src/viewer.ts`, bundled with esbuild) behind a plain node http server with a
+  fake same-origin Cognito, plus a `?auto=1` harness-only injection that waits for the
+  page's `/api/config` to land before submitting the form — clicking earlier throws,
+  because `signIn()` dereferences `cognito`. Captured over CDP (`shoot.mjs`), NOT
+  `--screenshot`: virtual time fires without waiting for the real fetch and catches the
+  login form mid-submit. 1400x1105 at DPR 2 → `sips --resampleWidth 1400` → `cwebp -q 82`.
+  **The numbers in it are seeded sample data** (a 30-day curve with real retention
+  cohorts); the UI is production code. Same rig is the only way to test this page's CSP —
+  it found two browser-only bugs no server-side test could see.
 
 - **Age rating:** `everyone` (admin tool; questionnaire answers are all "no").
 - **Data & privacy:** **No data leaves the user's cloud.** Player events flow from

@@ -46,6 +46,58 @@ describe("App", () => {
     await waitFor(() => expect(screen.queryByText(/You're looking at demo data/)).not.toBeInTheDocument());
   });
 
+  /**
+   * 🪤 Never show a made-up game to someone who owns a real one — not for a frame. The
+   * shell used to treat "haven't asked yet" (status === null) as "not deployed", so a live
+   * user got demo numbers for the length of the first status call, with no way to tell
+   * which they were looking at (founder, 2026-08-14).
+   */
+  it("shows NO demo data before the first status read answers", async () => {
+    let release: (s: DeploymentStatus) => void;
+    const pending = new Promise<DeploymentStatus>((r) => (release = r));
+    const api = liveApi({ status: vi.fn(() => pending) });
+    render(<App apiImpl={api} />);
+
+    // While the answer is outstanding: no demo claim, and no numbers of any kind.
+    expect(screen.queryByText(/You're looking at demo data/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Sunken Keep/)).not.toBeInTheDocument();
+
+    release!({
+      phase: "ready", stackName: "LiveOpsPoppyStack", region: "eu-west-1", inProgress: false,
+      currentTemplateKey: "template-x", currentRevision: 1, deployedRevision: 1,
+      updateAvailable: false, appOutdated: false,
+    });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Titles & SDK" })).toBeEnabled());
+    await userEvent.click(screen.getByRole("button", { name: "Titles & SDK" }));
+    expect(await screen.findByText("My Real Game")).toBeInTheDocument();
+    expect(screen.queryByText(/You're looking at demo data/)).not.toBeInTheDocument();
+  });
+
+  /**
+   * A backend update announced only inside the Setup tab is invisible to someone reading
+   * their Dashboard — so a released Lambda fix never reaches their account.
+   */
+  it("offers 'Update backend' above every view, not just Setup", async () => {
+    const api = liveApi({
+      status: vi.fn(async () => ({
+        phase: "ready" as const, stackName: "LiveOpsPoppyStack", region: "eu-west-1",
+        inProgress: false, currentTemplateKey: "template-new", currentRevision: 2,
+        deployedRevision: 1, updateAvailable: true, appOutdated: false,
+      })),
+      deploy: vi.fn(async () => ({ operation: "UPDATE" as const, stackName: "LiveOpsPoppyStack" })),
+    });
+    const user = userEvent.setup();
+    render(<App apiImpl={api} />);
+    expect(await screen.findByRole("button", { name: /update backend/i })).toBeInTheDocument();
+
+    // Still there on a tab that is not Setup.
+    await user.click(screen.getByRole("button", { name: "Remote config" }));
+    expect(screen.getByRole("button", { name: /update backend/i })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /update backend/i }));
+    await waitFor(() => expect(api.deploy).toHaveBeenCalled());
+  });
+
   it("puts Feedback last, as every poppy must", () => {
     render(<App apiImpl={demoApi()} />);
     const tabs = screen.getAllByRole("button").filter((b) => b.className.includes("tab"));

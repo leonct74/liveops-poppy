@@ -179,6 +179,18 @@ export function makeViewerHandler(deps: ViewerDeps) {
   }
 
   return async function handler(event: UrlEvent): Promise<UrlResponse> {
+    try {
+      return await route(event);
+    } catch (e) {
+      // 🪤 An escaping throw became an opaque 502 that the page rendered as zeros. Log the
+      // real reason where the admin can read it (CloudWatch), return a shaped error the
+      // page can display, and never leak the detail to a viewer.
+      console.error("viewer: request failed", e);
+      return json(500, { error: "Couldn't read the numbers. The admin can see why in the logs." });
+    }
+  };
+
+  async function route(event: UrlEvent): Promise<UrlResponse> {
     const method = event.requestContext?.http?.method ?? "GET";
     const path = (event.rawPath ?? "/").replace(/\/+$/, "") || "/";
     if (method !== "GET") return json(405, { error: "Method not allowed." });

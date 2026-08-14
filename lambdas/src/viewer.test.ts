@@ -96,6 +96,27 @@ describe("viewer handler", () => {
     expect(csp).toContain("default-src 'none'");
   });
 
+  /**
+   * 🪤 A failing read must never look like an empty game. This used to throw out of the
+   * handler as an opaque 502, which the page rendered as zeros — the founder saw "no data"
+   * and had no way to tell a broken backend from a quiet one (2026-08-14).
+   */
+  it("reports a failed read as an error instead of rendering as no data", async () => {
+    const boom = deps({
+      query: async () => {
+        throw new Error("AccessDeniedException: not authorized to Query");
+      },
+    });
+    const res = await makeViewerHandler(boom)(get("/api/stats", { authorization: `Bearer ${token()}` }));
+    expect(res.statusCode).toBe(500);
+    const body = JSON.parse(res.body);
+    expect(body.error).toBeTruthy();
+    // The viewer is told there IS a problem, never what it is.
+    expect(res.body).not.toContain("AccessDenied");
+    // Crucially it is NOT a 200 carrying empty arrays, which is what read as "no data".
+    expect(body.days).toBeUndefined();
+  });
+
   it("ships a favicon inline and refuses to be framed", async () => {
     const res = await makeViewerHandler(deps())(get("/"));
     // One Lambda route serves this page, so a /favicon.ico link would 404 every visit.

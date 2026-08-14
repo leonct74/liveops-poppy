@@ -184,6 +184,18 @@ function load() {
   fetch("api/stats" + q, { headers: { authorization: "Bearer " + idToken } })
     .then(function (r) {
       if (r.status === 401) { signOut("Your session expired — please sign in again."); return null; }
+      // 🪤 Anything that is not 200 must SAY so. This used to fall straight through to
+      // r.json(), leaving every field undefined, so the page rendered zeros and empty
+      // tables — a broken backend was indistinguishable from a quiet game, and the first
+      // person to hit it reasonably concluded the dashboard "isn't connected to the
+      // database" with nothing on screen to say otherwise.
+      if (!r.ok) {
+        return r.json().catch(function () { return {}; }).then(function (b) {
+          $("err").textContent = (b && b.error) || ("Couldn't load the numbers (error " + r.status + ").");
+          return null;
+        });
+      }
+      $("err").textContent = "";
       return r.json();
     })
     .then(function (d) {

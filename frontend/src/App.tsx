@@ -8,6 +8,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api as liveApi, type Api } from "./api";
 import { demoApi } from "./demo";
+import { Button } from "./Button";
 import { Dashboard } from "./Dashboard";
 import { ConfigEditor } from "./ConfigEditor";
 import { Deployment } from "./Deployment";
@@ -54,6 +55,14 @@ export function App({ apiImpl, statusPollMs = 10_000 }: { apiImpl?: Api; statusP
   const isLive = status?.phase === "ready";
   const demo = useMemo(() => demoApi(), []);
   const active: Api = isLive ? live : demo;
+
+  // 🪤 `status` is null until the FIRST read returns, and null is not "no backend" — it is
+  // "we have not asked yet". Treating the two the same flashed a made-up game at every
+  // user who already has a real one, for as long as that first call took. Showing someone
+  // fake numbers for their own product, even for a moment, is worse than showing nothing:
+  // they cannot tell which of the two they are looking at (founder, 2026-08-14). So
+  // nothing renders until the answer is in.
+  const answered = status !== null;
 
   // The shell asks for status ITSELF rather than waiting for the Setup tab's panel to
   // report in: otherwise someone with a live deployment opens the app, sees "demo data",
@@ -117,7 +126,32 @@ export function App({ apiImpl, statusPollMs = 10_000 }: { apiImpl?: Api; statusP
         live — no store review — and see players, sessions and retention. No per-player fees.
       </p>
 
-      {!isLive && (
+      {/* An update that includes a backend change is invisible if the button for it lives
+          inside one tab: someone reading their Dashboard never learns their Lambdas are
+          stale. So it rides above every view, the way the other poppies do. */}
+      {answered && isLive && status?.updateAvailable && (
+        <div className="banner info" style={{ marginBottom: 14 }}>
+          <div className="spread">
+            <span>
+              <strong>An update is ready for your backend.</strong> Your AWS account is still
+              running the previous version — this replaces the code in place and changes
+              nothing you've set up.
+            </span>
+            <Button
+              className="btn btn-primary btn-sm"
+              busyLabel="Updating…"
+              onClick={async () => {
+                await live.deploy();
+                setStatus(await live.status());
+              }}
+            >
+              Update backend
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {answered && !isLive && (
         <div className="banner info" style={{ marginBottom: 14 }}>
           <strong>You're looking at demo data.</strong> This is a made-up game so you can see
           what LiveOpsPoppy does. Set it up in your own AWS account (Setup tab) and it switches
@@ -157,7 +191,15 @@ export function App({ apiImpl, statusPollMs = 10_000 }: { apiImpl?: Api; statusP
         ))}
       </nav>
 
-      {tab === "dashboard" &&
+      {/* Until the first status read lands we do not know whose numbers these would be,
+          so we show none. A skeleton is honest; a demo game labelled as yours is not. */}
+      {!answered && (
+        <div className="card">
+          <div className="skeleton" style={{ height: 18, width: 220, borderRadius: 6 }} />
+        </div>
+      )}
+
+      {answered && tab === "dashboard" &&
         (titleId ? (
           <Dashboard api={active} titleId={titleId} />
         ) : (
@@ -168,7 +210,7 @@ export function App({ apiImpl, statusPollMs = 10_000 }: { apiImpl?: Api; statusP
           </div>
         ))}
 
-      {tab === "config" &&
+      {answered && tab === "config" &&
         (titleId ? (
           <ConfigEditor api={active} titleId={titleId} readOnly={!isLive} />
         ) : (
@@ -179,7 +221,7 @@ export function App({ apiImpl, statusPollMs = 10_000 }: { apiImpl?: Api; statusP
           </div>
         ))}
 
-      {tab === "titles" && (
+      {answered && tab === "titles" && (
         <>
           <Titles api={active} readOnly={!isLive} selectedId={titleId} onSelect={setTitleId} />
           {titleId && <Sdk endpoint={status?.collectorUrl} titleId={titleId} />}
@@ -188,7 +230,7 @@ export function App({ apiImpl, statusPollMs = 10_000 }: { apiImpl?: Api; statusP
 
       {/* Entitlement is per TITLE, so the Team tab needs one selected before it can ask
           the host whether this game is paid for. */}
-      {tab === "team" &&
+      {answered && tab === "team" &&
         (titleId ? (
           <Team api={active} titleId={titleId} isLive={isLive} />
         ) : (
@@ -200,7 +242,7 @@ export function App({ apiImpl, statusPollMs = 10_000 }: { apiImpl?: Api; statusP
           </div>
         ))}
 
-      {tab === "setup" && (
+      {answered && tab === "setup" && (
         <>
           <Deployment api={live} onChange={setStatus} />
           <div className="card">
@@ -219,7 +261,7 @@ export function App({ apiImpl, statusPollMs = 10_000 }: { apiImpl?: Api; statusP
         </>
       )}
 
-      {tab === "feedback" && <Feedback />}
+      {answered && tab === "feedback" && <Feedback />}
     </div>
   );
 }

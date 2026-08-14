@@ -343,9 +343,19 @@ export function Team({
                 Invite
               </Button>
             </div>
-            <p className="muted" style={{ marginBottom: 0, fontSize: 13 }}>
+            <p className="muted" style={{ marginBottom: 8, fontSize: 13 }}>
               They get an email with a temporary password and choose their own on first sign-in —
               you never see it. Removing someone takes effect within the hour.
+            </p>
+            {/* Cognito's built-in sender is an unfamiliar amazonaws address with no domain
+                reputation, so this mail lands in spam routinely. Saying so up front turns a
+                support question ("nobody got the invite") into a five-second check — the
+                founder's own invite went to spam on the first live test (2026-08-14). */}
+            <p className="banner warn" style={{ marginBottom: 0, fontSize: 13 }}>
+              <strong>Tell them to check their spam folder.</strong> The invite comes from
+              Amazon&apos;s sign-in service (<code>no-reply@verificationemail.com</code>), not from
+              your studio, so mail filters often catch it. It is not lost — it is nearly always
+              in spam.
             </p>
           </div>
 

@@ -40,6 +40,20 @@ export interface UrlResponse {
   body: string;
 }
 
+/**
+ * The exact origin the page must be allowed to reach for sign-in: the issuer minus its
+ * `/<poolId>` path. Exported because this one string decides whether sign-in works at all
+ * (see the CSP note below) — a wrong value fails only in a browser, which no curl and no
+ * server-side test can see.
+ */
+export function cognitoOrigin(issuer: string): string {
+  try {
+    return new URL(issuer).origin;
+  } catch {
+    return "";
+  }
+}
+
 const json = (statusCode: number, body: unknown): UrlResponse => ({
   statusCode,
   headers: { "content-type": "application/json", "cache-control": "no-store" },
@@ -178,8 +192,19 @@ export function makeViewerHandler(deps: ViewerDeps) {
           "content-type": "text/html; charset=utf-8",
           "cache-control": "no-store",
           // The page loads nothing from anywhere else; say so in a header a browser enforces.
+          //
+          // 🪤 connect-src names the pool's EXACT origin, derived from the issuer. It used
+          // to read `https://cognito-idp.*.amazonaws.com`, which is not a legal CSP
+          // host-source: a wildcard may only be the LEFT-MOST label (`https://*.example.com`),
+          // never an interior one. Browsers discard an invalid source silently — the console
+          // says "It will be ignored" and moves on — so connect-src degraded to 'self' alone
+          // and every sign-in died as an opaque `TypeError: Failed to fetch`, surfaced as
+          // "Couldn't reach the sign-in service". curl could not see it (CSP is enforced by
+          // browsers only) and no unit test covered the header, so sign-in shipped broken in
+          // EVERY browser (founder, 2026-08-14). The exact origin is also tighter than the
+          // wildcard ever intended to be.
           "content-security-policy":
-            "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self' https://cognito-idp.*.amazonaws.com",
+            `default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self' ${cognitoOrigin(deps.issuer)}`,
           "x-content-type-options": "nosniff",
           "referrer-policy": "no-referrer",
         },

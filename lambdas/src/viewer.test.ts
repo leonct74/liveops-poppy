@@ -76,6 +76,26 @@ describe("viewer handler", () => {
     expect(res.body).not.toContain("Sunken Keep");
   });
 
+  /**
+   * 🪤 The CSP must actually PERMIT the pool's origin, or sign-in is impossible in every
+   * browser while looking perfect from curl. It shipped reading
+   * `https://cognito-idp.*.amazonaws.com` — illegal, because a CSP wildcard may only be the
+   * left-most label. Browsers discard an invalid source with a console note and carry on,
+   * so connect-src silently became 'self' alone and every sign-in died as an opaque
+   * `TypeError: Failed to fetch` (founder, 2026-08-14). Asserting the literal origin is the
+   * point: a wildcard here is the bug.
+   */
+  it("allows the page to reach THIS pool's Cognito origin, with no wildcard", async () => {
+    const res = await makeViewerHandler(deps())(get("/"));
+    const csp = res.headers["content-security-policy"] ?? "";
+    const connect = csp.split(";").find((d) => d.trim().startsWith("connect-src")) ?? "";
+    expect(connect).toContain(new URL(ISSUER).origin);
+    // An interior wildcard matches nothing and is silently dropped — never ship one.
+    expect(connect).not.toContain("*");
+    // Everything else stays shut.
+    expect(csp).toContain("default-src 'none'");
+  });
+
   it("REFUSES stats without a token", async () => {
     const res = await makeViewerHandler(deps())(get("/api/stats"));
     expect(res.statusCode).toBe(401);

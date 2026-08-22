@@ -9,6 +9,7 @@ import { useEffect, useMemo, useState } from "react";
 import { api as liveApi, type Api } from "./api";
 import { demoApi } from "./demo";
 import { Button } from "./Button";
+import { ExternalLink } from "./ExternalLink";
 import { Dashboard } from "./Dashboard";
 import { ConfigEditor } from "./ConfigEditor";
 import { Deployment } from "./Deployment";
@@ -262,6 +263,15 @@ export function App({ apiImpl, statusPollMs = 10_000 }: { apiImpl?: Api; statusP
       )}
 
       {answered && tab === "feedback" && <Feedback />}
+      {/* Founder rule (2026-08-22), for every first-party poppy: the app is a tool acting in
+          the user's own accounts, provided as-is — its records are theirs to review, and
+          malfunctions or wrong use are not something Olly Digital answers for. */}
+      <p className="muted" style={{ fontSize: 11.5, marginTop: 14 }}>
+        LiveOpsPoppy runs in your own AWS account and is provided &ldquo;as is&rdquo; under the{" "}
+        <ExternalLink href="https://agentspoppy.com/terms">AgentsPoppy Terms</ExternalLink>. Its
+        counters and dashboards are working records for you to review — what you decide on them,
+        and what you ship to your players, stays with you.
+      </p>
     </div>
   );
 }

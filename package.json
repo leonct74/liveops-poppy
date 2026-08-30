@@ -1,6 +1,6 @@
 {
   "name": "liveops-poppy",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "private": true,
   "description": "Your game's LiveOps backend in your own AWS — an AgentsPoppy extension.",
   "type": "module",

@@ -39,6 +39,40 @@ describe("readBootstrap", () => {
     process.env.AGENTSPOPPY_BOOTSTRAP = JSON.stringify(BOOT);
     expect(readBootstrap()).toEqual(BOOT);
   });
+
+  it("takes the permissions boundary only as a well-formed managed-policy ARN", () => {
+    // Anything else is "the host did not confirm one", which the deploy must read as
+    // preserve-what's-deployed — never as an instruction to strip a boundary. And a junk
+    // value must NOT pass through: it would turn the stack's HasPermissionsBoundary
+    // condition on and make IAM refuse every CreateRole in it (a rolled-back deploy in
+    // place of the graceful unbounded one).
+    const arn = "arn:aws:iam::123456789012:policy/AgentsPoppyBoundary";
+    process.env.AGENTSPOPPY_BOOTSTRAP = JSON.stringify({ ...BOOT, permissionsBoundaryArn: arn });
+    expect(readBootstrap().permissionsBoundaryArn).toBe(arn);
+    // Surrounding whitespace is a transport artefact, not a different ARN.
+    process.env.AGENTSPOPPY_BOOTSTRAP = JSON.stringify({ ...BOOT, permissionsBoundaryArn: `  ${arn}\n` });
+    expect(readBootstrap().permissionsBoundaryArn).toBe(arn);
+    // Other partitions are real ARNs too.
+    const gov = "arn:aws-us-gov:iam::123456789012:policy/AgentsPoppyBoundary";
+    process.env.AGENTSPOPPY_BOOTSTRAP = JSON.stringify({ ...BOOT, permissionsBoundaryArn: gov });
+    expect(readBootstrap().permissionsBoundaryArn).toBe(gov);
+    for (const bad of [
+      "",
+      "   ",
+      "\t\n",
+      null,
+      7,
+      { arn },
+      "AgentsPoppyBoundary",
+      "arn:aws:iam::123456789012:policy/", // no policy name
+      "arn:aws:iam::12345:policy/AgentsPoppyBoundary", // not a 12-digit account
+      "arn:aws:iam::123456789012:role/AgentsPoppyBoundary", // a role, not a policy
+      "not-an-arn-at-all",
+    ]) {
+      process.env.AGENTSPOPPY_BOOTSTRAP = JSON.stringify({ ...BOOT, permissionsBoundaryArn: bad });
+      expect(readBootstrap().permissionsBoundaryArn).toBeUndefined();
+    }
+  });
 });
 
 describe("brokerCredentialsProvider", () => {

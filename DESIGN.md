@@ -208,6 +208,45 @@ either Cognito or Lambda-signed player tokens (decide then; leaning tokens to st
 Remember the risk-assessor substring trap — verify the rating with the real assessor, not by
 reading the matrix.
 
+**The AgentsPoppy permissions boundary** (`agentspoppy/docs/specs/broker-role-v2.md` step 2).
+A name-scoped grant to create roles is, on its own, enough to mint an account administrator:
+create `LiveOpsPoppyX`, write `*:*` on it, pass it to a Lambda. AgentsPoppy closes that with a
+managed policy, `AgentsPoppyBoundary`, that CAPS every role a poppy creates. We attach it:
+
+- the template takes `PermissionsBoundaryArn` (default `""`) with a `HasPermissionsBoundary`
+  condition, and both roles carry `PermissionsBoundary: Fn::If(…, Ref, AWS::NoValue)` — which
+  composes fine inside `ViewerRole`'s existing `TeamEnabled` resource condition. It is a
+  PARAMETER, not a hard-coded ARN, because IAM refuses `CreateRole` outright when the named
+  boundary isn't in the account: hard-coding it would break every user who hasn't re-applied
+  AgentsPoppy's setup yet;
+- the backend passes the ARN the bootstrap carries (the host sends it ONLY once it has
+  confirmed the policy exists — and only a well-formed policy ARN counts: a blank or
+  malformed value would turn the condition on and make IAM refuse every `CreateRole`), else
+  the value the deployed stack already has, else `""` — read from the same `before` describe
+  that `TeamDashboardEnabled` already uses, for the same reason: omitting a parameter on an
+  update resets it to the template default, which here would silently STRIP an applied
+  boundary. Always explicit, never `UsePreviousValue`;
+- two things the preserve-what's-deployed fallback must NOT do. It must not answer `""` to a
+  read it could not make: `describe` returns null only for a positive "does not exist", and
+  any other failure (throttle, dropped connection, expired credential) aborts the deploy with
+  a plain-language message, because guessing "unbounded" there would strip the cap off every
+  existing role. And it must not preserve off a DEAD stack (`ROLLBACK_COMPLETE` /
+  `REVIEW_IN_PROGRESS`, the two the deploy deletes and recreates): those have no live roles
+  left to protect, and reusing an unconfirmed ARN that may be what rolled the create back
+  turns one failure into a self-perpetuating one;
+- `TEMPLATE_REVISION` 3 → 4, or the ordering-aware `compareDeployment` never offers the
+  update and the boundary reaches nobody. The revision alone isn't enough, though: a user
+  who updates while their AgentsPoppy setup is still pre-boundary lands at revision 4 with
+  UNCAPPED roles, and after they re-apply setup nothing would mark them out of date again.
+  So the deployed `PermissionsBoundaryArn` is itself part of the update signal —
+  `compareDeployment` offers an update whenever a deployed stack's boundary differs from the
+  one the host confirms now, and stays quiet when the host confirms nothing (there is then
+  genuinely nothing to apply);
+- the manifest gained `iam:PutRolePermissionsBoundary` + `iam:DeleteRolePermissionsBoundary`
+  on the existing `LiveOpsPoppy*` role scope (CloudFormation calls the second when an update
+  turns the boundary back off). Rating unchanged — checked against the real assessor. Grants
+  changing means the host re-asks users to approve once.
+
 ## 10. Pricing & competition (the page-6 story)
 
 **DECIDED (founder, 2026-08-11): free core + ONE premium — the Team dashboard —

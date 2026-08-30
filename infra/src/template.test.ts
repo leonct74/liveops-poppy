@@ -96,6 +96,52 @@ describe("buildTemplate", () => {
   });
 
   /**
+   * AgentsPoppy's permissions boundary (broker-role-v2 step 2). The property being locked
+   * is that NO role can be created outside the cap — a role added later without the Fn::If
+   * would be exactly the escalation path the boundary exists to close, and it would deploy
+   * perfectly happily. So the assertion walks every AWS::IAM::Role rather than naming two.
+   */
+  describe("permissions boundary", () => {
+    const ifBoundary = {
+      "Fn::If": ["HasPermissionsBoundary", { Ref: "PermissionsBoundaryArn" }, { Ref: "AWS::NoValue" }],
+    };
+
+    it("takes the boundary as an optional parameter, defaulting to unbounded", () => {
+      // The empty default is load-bearing: naming a policy that isn't in the account yet
+      // makes CreateRole fail, so a pre-boundary AgentsPoppy setup must deploy without one.
+      const p = (tpl.Parameters as any).PermissionsBoundaryArn;
+      expect(p.Type).toBe("String");
+      expect(p.Default).toBe("");
+      expect((tpl as any).Conditions.HasPermissionsBoundary).toEqual({
+        "Fn::Not": [{ "Fn::Equals": [{ Ref: "PermissionsBoundaryArn" }, ""] }],
+      });
+    });
+
+    it("caps EVERY IAM role the stack creates — including the condition-gated viewer role", () => {
+      const roles = Object.entries(resources).filter(([, r]) => r.Type === "AWS::IAM::Role");
+      expect(roles.map(([name]) => name).sort()).toEqual(["CollectorRole", "ViewerRole"]);
+      for (const [name, r] of roles) {
+        expect(r.Properties.PermissionsBoundary, `${name} must carry the boundary`).toEqual(ifBoundary);
+      }
+      // A property-level Fn::If nests inside a resource-level Condition; the gate stays.
+      expect(resources.ViewerRole!.Condition).toBe("TeamEnabled");
+    });
+
+    it("caps, never grants — the roles' own policies are untouched by the boundary", () => {
+      const collector = resources.CollectorRole!.Properties.Policies[0].PolicyDocument.Statement;
+      expect(collector[0].Action).toEqual(["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem"]);
+      const viewer = resources.ViewerRole!.Properties.Policies[0].PolicyDocument.Statement;
+      expect(viewer[0].Action).toEqual(["dynamodb:GetItem", "dynamodb:Query"]);
+    });
+
+    it("bumps the revision, or deployed stacks never see the boundary at all", () => {
+      // compareDeployment is ordering-aware: an unchanged revision offers no update, so a
+      // template change that skips the bump reaches nobody.
+      expect(TEMPLATE_REVISION).toBeGreaterThanOrEqual(4);
+    });
+  });
+
+  /**
    * The premium team plane (DESIGN §10). The invariant that matters commercially AND
    * ethically: a FREE deployment must create none of it and pay for none of it — so every
    * viewer resource is gated on the TeamEnabled condition, and the default is "no".

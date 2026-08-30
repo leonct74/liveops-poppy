@@ -43,9 +43,16 @@ deploy bucket):
 | cloudformation | Create/Update/Delete/Describe* + ContinueUpdateRollback | `arn:aws:cloudformation:*:*:stack/LiveOpsPoppy*` |
 | dynamodb | table lifecycle + TTL + tags + Query/Get/Put/Update/Delete | `arn:aws:dynamodb:*:*:table/LiveOpsPoppy*` |
 | lambda | function lifecycle + FunctionUrlConfig + Add/RemovePermission + tags | `arn:aws:lambda:*:*:function:LiveOpsPoppy*` |
-| iam | role lifecycle + PassRole + inline policy + tags | `arn:aws:iam::*:role/LiveOpsPoppy*` |
+| iam | role lifecycle + PassRole + inline policy + tags + Put/DeleteRolePermissionsBoundary | `arn:aws:iam::*:role/LiveOpsPoppy*` |
 | logs | log-group lifecycle + retention + tags | `arn:aws:logs:*:*:log-group:/aws/lambda/LiveOpsPoppy*` |
 | s3 | bucket lifecycle + object Put/Get/Delete | `arn:aws:s3:::liveopspoppy-deploy-*` |
+
+The two boundary actions are broker-role-v2 step 2: CloudFormation calls
+`PutRolePermissionsBoundary` to cap each role this stack creates with the account's
+`AgentsPoppyBoundary` policy, and `DeleteRolePermissionsBoundary` when an update clears the
+`PermissionsBoundaryArn` parameter again — without the delete, such an update strands the
+stack mid-rollback. They CAP LiveOpsPoppy's own roles and grant them nothing, so they sit on
+the existing name-scoped grant and must never widen past it (asserted in `manifest.test.ts`).
 
 Description written in plain language (the CrewPoppy manifest precedent): "Deploys and
 removes its own CloudFormation stack (LiveOpsPoppyStack): one DynamoDB table, one collector

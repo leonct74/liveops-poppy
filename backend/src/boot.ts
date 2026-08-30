@@ -15,6 +15,14 @@ export interface BackendBootstrap {
   credentialsUrl: string;
   credentialsToken?: string;
   port?: number;
+  /**
+   * ARN of the account's `AgentsPoppyBoundary` managed policy — present ONLY when the host
+   * has confirmed the deployed AgentsPoppy setup actually carries it. Set → the deploy
+   * passes it as the stack's `PermissionsBoundaryArn` so every IAM role the stack creates
+   * is capped by it. Absent → preserve whatever the stack already has: never strip a
+   * boundary because of a host-side hiccup, and never name a policy that may not exist.
+   */
+  permissionsBoundaryArn?: string;
   account: { accountId: string; region: string };
 }
 
@@ -29,6 +37,13 @@ export type AwsCredentialIdentityProvider = () => Promise<AwsCredentialIdentity>
 
 const REFRESH_BUFFER_MS = 300_000; // re-mint 5 min before expiry
 
+/**
+ * An IAM managed-policy ARN, e.g. `arn:aws:iam::123456789012:policy/AgentsPoppyBoundary`.
+ * Partition-tolerant (`aws-cn`, `aws-us-gov`); IAM is global, so the region segment is
+ * empty and the account is always 12 digits.
+ */
+const POLICY_ARN = /^arn:aws[a-z-]*:iam::\d{12}:policy\/.+$/;
+
 export function readBootstrap(): BackendBootstrap {
   const raw = process.env.AGENTSPOPPY_BOOTSTRAP;
   if (!raw) throw new Error("AGENTSPOPPY_BOOTSTRAP is not set — this backend must be spawned by AgentsPoppy.");
@@ -41,6 +56,16 @@ export function readBootstrap(): BackendBootstrap {
   if (!boot.connectionId || !boot.credentialsUrl || !boot.account?.accountId) {
     throw new Error("AGENTSPOPPY_BOOTSTRAP is missing required fields (connectionId/credentialsUrl/account).");
   }
+  // Only a WELL-FORMED managed-policy ARN counts as a confirmed boundary. Anything else —
+  // absent, empty, whitespace, the wrong type, a truncated ARN — means "not confirmed",
+  // which the deploy reads as preserve-what's-there rather than as an instruction to attach
+  // nothing. Shape-checking matters: a junk string sails through as the stack's
+  // PermissionsBoundaryArn, makes its HasPermissionsBoundary condition TRUE, and then IAM
+  // refuses every CreateRole in the stack — a rolled-back deploy in place of the graceful
+  // unbounded one the optional-by-construction design promises.
+  const boundary = typeof boot.permissionsBoundaryArn === "string" ? boot.permissionsBoundaryArn.trim() : "";
+  if (POLICY_ARN.test(boundary)) boot.permissionsBoundaryArn = boundary;
+  else delete boot.permissionsBoundaryArn;
   return boot;
 }
 

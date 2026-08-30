@@ -39,6 +39,12 @@ export interface AwsCtx {
   s3: S3Client;
   region: string;
   accountId: string;
+  /**
+   * AgentsPoppy's `AgentsPoppyBoundary` policy ARN, from the bootstrap — set only when the
+   * host has confirmed it exists in the account (boot.ts). Absent is not "no boundary": see
+   * boundaryParameterValue.
+   */
+  permissionsBoundaryArn?: string;
 }
 
 /** The stack creates a NAMED IAM role, so CloudFormation needs this acknowledged. */
@@ -120,16 +126,41 @@ function phaseOf(status: string | undefined): DeploymentPhase {
  *  - same revision, different content key (template or Lambda code) → a same-revision
  *    rebuild (a code-only fix); offer it, since revision can't order it either way.
  *  - no revision recorded (stack predates the tag) → fall back to content comparison.
+ *  - roles NOT capped by the boundary the host confirms RIGHT NOW → an update, even when
+ *    every content key matches.
+ *
+ * That last rule is what stops the AgentsPoppy boundary (broker-role-v2 step 2) from being
+ * applicable only as a side effect of some unrelated change. Without it: a user updates the
+ * backend while their AgentsPoppy setup is still pre-boundary, so nothing is confirmed and
+ * the stack lands at the current revision with UNBOUNDED roles; they later re-run setup and
+ * the host starts confirming the boundary — but revision and both content keys now match,
+ * so nothing ever marks their stack out of date and they stay silently uncapped forever.
+ * Honest in the other direction too: when the host confirms nothing there is genuinely
+ * nothing to apply, so this stays quiet rather than nagging about an update we can't make.
  */
 export function compareDeployment(deployed: {
   revision?: number;
   templateKey?: string;
   codeKey?: string;
+  /**
+   * The stack's deployed `PermissionsBoundaryArn` parameter — `""` when its roles are
+   * uncapped. Pass this ONLY when a stack exists: `undefined` means "nothing deployed",
+   * and a stack that doesn't exist has no roles to cap.
+   */
+  boundaryArn?: string;
+  /** The boundary ARN the host confirms right now (`AwsCtx.permissionsBoundaryArn`). */
+  confirmedBoundaryArn?: string;
 }): { updateAvailable: boolean; appOutdated: boolean } {
-  const { revision, templateKey: dTemplate, codeKey: dCode } = deployed;
+  const { revision, templateKey: dTemplate, codeKey: dCode, boundaryArn, confirmedBoundaryArn } = deployed;
   if (revision !== undefined && revision > templateRevision) {
+    // The app is behind: deploying from here would roll the backend BACKWARDS, so not even
+    // the boundary is worth offering — the app has to update first (deploy() refuses too).
     return { updateAvailable: false, appOutdated: true };
   }
+  // An existing stack whose roles aren't capped by the boundary the host now confirms is
+  // out of date whatever the content keys say.
+  const boundaryPending =
+    !!confirmedBoundaryArn && boundaryArn !== undefined && boundaryArn !== confirmedBoundaryArn;
   if (revision !== undefined && revision < templateRevision) {
     return { updateAvailable: true, appOutdated: false };
   }
@@ -138,7 +169,7 @@ export function compareDeployment(deployed: {
   // we cannot substantiate.
   const contentDiffers =
     (!!dTemplate && dTemplate !== templateKey) || (!!dCode && dCode !== lambdaCodeKey);
-  return { updateAvailable: contentDiffers, appOutdated: false };
+  return { updateAvailable: contentDiffers || boundaryPending, appOutdated: false };
 }
 
 /**
@@ -160,6 +191,12 @@ export async function getStatus(ctx: AwsCtx): Promise<DeploymentStatus> {
   // The deployed collector-code key rides as a stack PARAMETER — a code-only change moves
   // it while the template key stays put, so the comparison must watch both.
   const deployedCodeKey = stack?.Parameters?.find((p) => p.ParameterKey === "LambdaCodeKey")?.ParameterValue;
+  // The boundary the deployed roles actually carry. Read ONLY when a stack exists: its
+  // absence is how compareDeployment tells "uncapped roles" from "no roles at all". A stack
+  // deployed before the parameter existed reads as "" — uncapped, which is the truth.
+  const deployedBoundaryArn = stack
+    ? (stack.Parameters?.find((p) => p.ParameterKey === "PermissionsBoundaryArn")?.ParameterValue ?? "")
+    : undefined;
   const collectorUrl = stack?.Outputs?.find((o) => o.OutputKey === "CollectorUrl")?.OutputValue;
 
   // On a failure, pull the actual reason from the stack's events so the details view shows
@@ -173,6 +210,8 @@ export async function getStatus(ctx: AwsCtx): Promise<DeploymentStatus> {
       : {}),
     ...(deployedTemplateKey ? { templateKey: deployedTemplateKey } : {}),
     ...(deployedCodeKey ? { codeKey: deployedCodeKey } : {}),
+    ...(deployedBoundaryArn !== undefined ? { boundaryArn: deployedBoundaryArn } : {}),
+    ...(ctx.permissionsBoundaryArn ? { confirmedBoundaryArn: ctx.permissionsBoundaryArn } : {}),
   });
 
   return {
@@ -251,6 +290,38 @@ export async function stackOutputs(ctx: Pick<AwsCtx, "cfn">): Promise<Record<str
   return out;
 }
 
+/**
+ * The value to deploy the stack's `PermissionsBoundaryArn` parameter with — the AgentsPoppy
+ * ceiling on every IAM role the stack creates (broker-role-v2 step 2). Pure: `before` is the
+ * DescribeStacks result the deploy path already holds, so this costs no extra AWS call.
+ *
+ * Fail-safe in BOTH directions, which is why "absent" is not the same as "empty":
+ *  - the host CONFIRMED the boundary policy exists → use it. Naming it only when confirmed
+ *    is what stops CreateRole failing on a policy that isn't in the account;
+ *  - not confirmed → PRESERVE whatever the deployed stack already carries. Absence also
+ *    covers a transient host-side read, and a routine update must never strip an applied
+ *    boundary because of a hiccup;
+ *  - nothing deployed yet → empty, i.e. unbounded. The only value that works on a fresh
+ *    create against a pre-boundary AgentsPoppy setup;
+ *  - a DEAD stack (ROLLBACK_COMPLETE / REVIEW_IN_PROGRESS — the two the deploy below
+ *    deletes and recreates) → empty. It has no live roles left to protect, so preserving
+ *    buys no safety, while carrying an UNCONFIRMED ARN into the fresh CreateRole is how one
+ *    boundary-caused rollback becomes self-perpetuating: the create fails, the new
+ *    ROLLBACK_COMPLETE records the bad ARN again, the user retries, it fails again.
+ *
+ * `before` is read BEFORE any of this is computed, so the status is always known here.
+ */
+export function boundaryParameterValue(confirmed: string | undefined, before: Stack | null): string {
+  // A host-confirmed ARN still applies normally, dead stack or not: it has been checked to
+  // exist in the account, so it can't be the thing that fails the create.
+  if (confirmed) return confirmed;
+  const status = before?.StackStatus;
+  if (status === "ROLLBACK_COMPLETE" || status === "REVIEW_IN_PROGRESS") return "";
+  return (
+    before?.Parameters?.find((p) => p.ParameterKey === "PermissionsBoundaryArn")?.ParameterValue ?? ""
+  );
+}
+
 export async function deploy(
   ctx: AwsCtx,
   attribution: AttributionContext,
@@ -261,7 +332,7 @@ export async function deploy(
    */
   teamDashboard?: boolean,
 ): Promise<DeployResult> {
-  const { cfn, s3, region, accountId } = ctx;
+  const { cfn, s3, region, accountId, permissionsBoundaryArn } = ctx;
   // The stack MUST carry attribution or AgentsPoppy can neither show nor tear down what
   // we made — so refuse rather than deploy an untrackable footprint.
   if (!attribution.accountId || !attribution.connectionId) {
@@ -273,7 +344,19 @@ export async function deploy(
   // Refuse to roll a NEWER deployed stack backwards. The status route reports appOutdated
   // so the UI can say "update LiveOpsPoppy first", but a direct POST must be refused too —
   // the guard belongs on the mutating path, not only in the UI.
-  const before = await describe(cfn, stackName);
+  // describe() returns null ONLY for a positive "does not exist"; every other failure — a
+  // throttle, a dropped connection, an expired credential — throws. That distinction is
+  // load-bearing: answering "no stack" to a read we could not make would hand CloudFormation
+  // an empty PermissionsBoundaryArn and silently STRIP the cap off every role it created. So
+  // stop before changing anything, and say why in words the user can act on.
+  let before: Stack | null;
+  try {
+    before = await describe(cfn, stackName);
+  } catch (e) {
+    throw new Error(
+      `Couldn't read your LiveOpsPoppy stack from AWS, so nothing was changed — continuing blind could remove the security limits on the roles it created. Try again in a moment. (${(e as Error).message})`,
+    );
+  }
   const beforeRevision = Number(before?.Tags?.find((t) => t.Key === REVISION_TAG)?.Value);
   if (Number.isFinite(beforeRevision) && beforeRevision > templateRevision) {
     throw new Error(
@@ -313,6 +396,14 @@ export async function deploy(
       // random id, so its grant can only be tag-scoped: these are load-bearing.
       { ParameterKey: "AttrAccountId", ParameterValue: attribution.accountId },
       { ParameterKey: "AttrConnectionId", ParameterValue: attribution.connectionId },
+      // Not a user choice — the platform's cap on the roles this stack creates, resolved
+      // from the bootstrap and what's already deployed. Always an explicit value, never
+      // UsePreviousValue: that fails outright on the first update after a template gains
+      // a parameter, which is exactly what this one is to every existing stack.
+      {
+        ParameterKey: "PermissionsBoundaryArn",
+        ParameterValue: boundaryParameterValue(permissionsBoundaryArn, before),
+      },
     ],
     Capabilities: CAPABILITIES,
     Tags,

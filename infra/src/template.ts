@@ -47,7 +47,22 @@ export const VIEWER_HANDLER = "viewer.handler";
  * app sees deployed-revision > embedded-revision and must never offer a downgrade
  * (MailPoppy's 2026-07-29 plain-inequality footgun, designed out from day one).
  */
-export const TEMPLATE_REVISION = 3;
+export const TEMPLATE_REVISION = 4;
+
+/**
+ * AgentsPoppy's permissions boundary (broker-role-v2 step 2), applied to EVERY IAM role
+ * this stack creates. It CAPS what such a role can ever do and grants it nothing, so the
+ * Lambdas' own policies — and their runtime behaviour — are identical either way.
+ *
+ * Deployed through a parameter + condition rather than hard-wired, because both states
+ * must work: the host supplies the ARN only once it has confirmed the account's
+ * AgentsPoppyBoundary policy EXISTS, and a CreateRole naming a policy that isn't in the
+ * account is refused by IAM. Empty (the default) therefore deploys unbounded, which is
+ * what keeps a pre-boundary AgentsPoppy setup working.
+ */
+const PERMISSIONS_BOUNDARY = {
+  "Fn::If": ["HasPermissionsBoundary", { Ref: "PermissionsBoundaryArn" }, { Ref: "AWS::NoValue" }],
+};
 
 export interface CfnTemplate {
   AWSTemplateFormatVersion: string;
@@ -91,9 +106,21 @@ export function buildTemplate(): CfnTemplate {
       // only ever be tag-scoped — these two are load-bearing, not cosmetic.
       AttrAccountId: { Type: "String", Description: "agentspoppy:account tag value." },
       AttrConnectionId: { Type: "String", Description: "agentspoppy:connection tag value." },
+      // The platform's ceiling on the roles below (see PERMISSIONS_BOUNDARY). Not a user
+      // choice: the host passes it when the boundary policy is confirmed present, and the
+      // empty default is the only value that can work before then.
+      PermissionsBoundaryArn: {
+        Type: "String",
+        Default: "",
+        Description:
+          "ARN of a managed policy to attach as the permissions boundary on every IAM role this stack creates (AgentsPoppy's AgentsPoppyBoundary). Empty = no boundary.",
+      },
     },
     Conditions: {
       TeamEnabled: { "Fn::Equals": [{ Ref: "TeamDashboardEnabled" }, "yes"] },
+      HasPermissionsBoundary: {
+        "Fn::Not": [{ "Fn::Equals": [{ Ref: "PermissionsBoundaryArn" }, ""] }],
+      },
     },
     Resources: {
       DataTable: {
@@ -130,6 +157,7 @@ export function buildTemplate(): CfnTemplate {
         Type: "AWS::IAM::Role",
         Properties: {
           RoleName: ROLE_NAME,
+          PermissionsBoundary: PERMISSIONS_BOUNDARY,
           AssumeRolePolicyDocument: {
             Version: "2012-10-17",
             Statement: [
@@ -315,6 +343,9 @@ export function buildTemplate(): CfnTemplate {
         Condition: "TeamEnabled",
         Properties: {
           RoleName: VIEWER_ROLE_NAME,
+          // A property-level Fn::If composes inside the resource-level Condition above:
+          // this role exists only when the team plane does, and is capped whenever it does.
+          PermissionsBoundary: PERMISSIONS_BOUNDARY,
           AssumeRolePolicyDocument: {
             Version: "2012-10-17",
             Statement: [

@@ -31,6 +31,9 @@ const aws: AwsCtx = {
   s3: new S3Client({ region, credentials }),
   region,
   accountId: boot.account.accountId,
+  // Only set when the host confirmed the AgentsPoppyBoundary policy exists; the deploy
+  // preserves the stack's current boundary when it isn't.
+  permissionsBoundaryArn: boot.permissionsBoundaryArn,
 };
 const db = new DynamoDBClient({ region, credentials });
 

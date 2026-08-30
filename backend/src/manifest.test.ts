@@ -67,6 +67,19 @@ describe("extension.json permission set", () => {
     expect(d).toMatch(/tag/i);
   });
 
+  it("can attach AND detach the AgentsPoppy boundary, on its own roles only", () => {
+    // broker-role-v2 step 2. BOTH actions are needed: CloudFormation attaches the boundary
+    // when the parameter is set, and calls DeleteRolePermissionsBoundary when an update
+    // clears it — without the delete, the stack strands mid-update. They CAP the poppy's own
+    // roles and grant them nothing, so they belong on the existing name-scoped grant and
+    // must never widen past it.
+    const iam = grants.filter((g) => g.service === "iam");
+    expect(iam).toHaveLength(1);
+    expect(iam[0]!.resourceScope).toBe("arn:aws:iam::*:role/LiveOpsPoppy*");
+    expect(iam[0]!.actions).toContain("PutRolePermissionsBoundary");
+    expect(iam[0]!.actions).toContain("DeleteRolePermissionsBoundary");
+  });
+
   it("grants no service a bare wildcard scope except AWS's public price list", () => {
     for (const grant of grants) {
       if (grant.resourceScope !== "*") continue;

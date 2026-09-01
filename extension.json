@@ -159,6 +159,11 @@
       "infrastructure": "websites"
     }
   },
+  "compliance": {
+    "dataHandled": "Game configuration, feature flags, prices and player-segment counters, stored only in your own AWS account.",
+    "subprocessors": [],
+    "securityContact": "support@agentspoppy.com"
+  },
   "frontend": {
     "entry": "frontend/index.html"
   },

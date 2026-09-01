@@ -153,7 +153,11 @@
         "note": "Managing that same pool and its viewer accounts — enforced by IAM to pools carrying LiveOpsPoppy's own tag, so no other poppy's user pool (a mail poppy's mailboxes, say) can be listed, emptied or deleted. The pool is born tagged from the stack's AttrAccountId/AttrConnectionId parameters."
       }
     ],
-    "limits": null
+    "limits": null,
+    "network": {
+      "egress": "aws-only",
+      "infrastructure": "websites"
+    }
   },
   "frontend": {
     "entry": "frontend/index.html"

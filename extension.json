@@ -1,7 +1,7 @@
 {
   "id": "com.liveopspoppy.desktop",
   "name": "LiveOpsPoppy",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "description": "Your game's LiveOps backend in your own AWS — change balance, prices and features live without an app-store review, and see players, sessions and retention on a dashboard nobody else can read. No per-player fees, ever.",
   "icon": "frontend/liveopspoppy-icon.png",
   "bugsUrl": "https://github.com/leonct74/liveops-poppy/issues",
